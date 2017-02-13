@@ -130,8 +130,39 @@ TEST_F( Parser, try_cast ){
         auto root = parse("[1,2,3]");
         auto arr = try_cast<array_>(root);
         EXPECT_EQ( 3, arr.size());
-        EXPECT_EQ( 1, try_cast<std::int64_t>(  arr[0] );
-        EXPECT_EQ( 2, try_cast<std::int64_t>(  arr[1] );
-        EXPECT_EQ( 3, try_cast<std::int64_t>(  arr[2] );
+        EXPECT_EQ( 1, try_cast<std::int64_t>( arr[0] ));
+        EXPECT_EQ( 2, try_cast<std::int64_t>( arr[1] ));
+        EXPECT_EQ( 3, try_cast<std::int64_t>( arr[2] ));
 }
 
+
+TEST_F( Parser, from_wiki ){
+        auto str = R"(
+        {
+          "firstName": "John",
+          "lastName": "Smith",
+          "age": 25,
+          "address": {
+            "streetAddress": "21 2nd Street",
+            "city": "New York",
+            "state": "NY",
+            "postalCode": "10021"
+          },
+          "phoneNumber": [
+            {
+              "type": "home",
+              "number": "212 555-1234"
+            },
+            {
+              "type": "fax",
+              "number": "646 555-4567"
+            }
+          ],
+          "gender": {
+            "type": "male"
+          }
+        }
+        )";
+        auto root = parse(str);
+        display(root);
+}
