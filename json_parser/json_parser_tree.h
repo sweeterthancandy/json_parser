@@ -46,6 +46,12 @@ namespace json_parser{
                 void for_each(F&& f)const{
                         boost::for_each( data_, f );
                 }
+                decltype(auto) operator[](size_t idx){
+                        return data_[idx];
+                }
+                decltype(auto) operator[](size_t idx)const{
+                        return data_[idx];
+                }
                 auto size()const{return data_.size();}
         private:
                 std::vector<node> data_;

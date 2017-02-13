@@ -10,7 +10,7 @@
 
 namespace json_parser{
         template<class Iter>
-        auto parse(Iter first, Iter last)->boost::optional<node>{
+        auto try_parse(Iter first, Iter last)->boost::optional<node>{
                 maker m;
                 detail::basic_parser<maker,Iter> p(m,first,last);
                 try{ 
@@ -21,8 +21,7 @@ namespace json_parser{
                 return m.make();
         }
         template<class Maker, class Iter>
-        auto parse(Maker& m, Iter first, Iter last)->bool{
-                //detail::xpr_parser p;
+        auto try_parse(Maker& m, Iter first, Iter last)->bool{
                 detail::basic_parser<Maker,Iter> p(m,first,last);
                 try{ 
                         // this throws if ! eos
@@ -33,6 +32,25 @@ namespace json_parser{
                         return false;
                 }
                 __builtin_unreachable();
+        }
+        decltype(auto) try_parse(std::string const& s){
+                return try_parse(s.begin(), s.end());
+        }
+        
+
+
+        template<class Iter>
+        auto parse(Iter first, Iter last)->node{
+                maker m;
+                detail::basic_parser<maker,Iter> p(m,first,last);
+                p.parse();
+                return m.make();
+        }
+        template<class Maker, class Iter>
+        void parse(Maker& m, Iter first, Iter last){
+                detail::basic_parser<Maker,Iter> p(m,first,last);
+                p.parse();
+                assert( p.eos() && "post condition violated");
         }
         decltype(auto) parse(std::string const& s){
                 return parse(s.begin(), s.end());
