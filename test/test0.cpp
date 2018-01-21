@@ -101,12 +101,21 @@ protected:
 
 TEST_F( Parser, valid_strings){
         for( auto const& str : valid_strings ){
-                EXPECT_TRUE( try_parse(str) );
+                EXPECT_TRUE( !!try_parse(str) );
                 EXPECT_NO_THROW( parse(str) );
         }
 }
 
 TEST_F( Parser, invalid_strings){
+        EXPECT_FALSE( try_parse("{") );
+        EXPECT_FALSE( try_parse("{}{{") );
+        EXPECT_FALSE( try_parse("{} {{") );
+        EXPECT_FALSE( try_parse("{}{") );
+        EXPECT_FALSE( try_parse("{} {") );
+        EXPECT_FALSE( try_parse("{} { ") );
+        EXPECT_FALSE( try_parse("{}}") );
+        EXPECT_FALSE( try_parse("{} 4") );
+        EXPECT_FALSE( try_parse("{} a ") );
         for( auto const& str : invalid_strings ){
                 EXPECT_FALSE( try_parse(str) );
                 EXPECT_ANY_THROW( parse(str) );
@@ -135,34 +144,66 @@ TEST_F( Parser, try_cast ){
         EXPECT_EQ( 3, try_cast<std::int64_t>( arr[2] ));
 }
 
+static std::string json_sample_text = R"(
+{
+  "firstName": "John",
+  "lastName": "Smith",
+  "age": 25,
+  "address": {
+    "streetAddress": "21 2nd Street",
+    "city": "New York",
+    "state": "NY",
+    "postalCode": "10021"
+  },
+  "phoneNumber": [
+    {
+      "type": "home",
+      "number": "212 555-1234"
+    },
+    {
+      "type": "fax",
+      "number": "646 555-4567"
+    }
+  ],
+  "gender": {
+    "type": "male"
+  }
+}
+)";
 
+#if 0
 TEST_F( Parser, from_wiki ){
-        auto str = R"(
-        {
-          "firstName": "John",
-          "lastName": "Smith",
-          "age": 25,
-          "address": {
-            "streetAddress": "21 2nd Street",
-            "city": "New York",
-            "state": "NY",
-            "postalCode": "10021"
-          },
-          "phoneNumber": [
-            {
-              "type": "home",
-              "number": "212 555-1234"
-            },
-            {
-              "type": "fax",
-              "number": "646 555-4567"
-            }
-          ],
-          "gender": {
-            "type": "male"
-          }
-        }
-        )";
-        auto root = parse(str);
+        auto root = parse(json_sample_text);
         display(root);
+}
+#endif
+
+TEST(tokenizer, _){
+        tokenizer tok(json_sample_text);
+        for(auto iter=tok.token_begin(), end=tok.token_end();iter!=end;++iter){
+        }
+
+}
+TEST(tokenizer, hello_world){
+        tokenizer tok("hello world");
+        unsigned n = 0;
+        auto iter=tok.token_begin(), end=tok.token_end();
+        EXPECT_NE( iter, end);
+        EXPECT_EQ(token_type::string_,  iter->type());
+        ++iter;
+        EXPECT_EQ(token_type::string_,  iter->type());
+        ++iter;
+        EXPECT_EQ( iter, end);
+}
+
+TEST(tokenizer, eos){
+        EXPECT_TRUE(tokenizer("").eos());
+        EXPECT_TRUE(tokenizer("   ").eos());
+        EXPECT_FALSE(tokenizer("and").eos());
+}
+TEST(tokenizer, one){
+        tokenizer tok("  1");
+        EXPECT_FALSE(tok.eos());
+        tok.next();
+        EXPECT_TRUE(tok.eos());
 }

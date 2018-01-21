@@ -149,7 +149,7 @@ namespace json_parser { namespace detail {
                         __builtin_unreachable();
                 }
                 bool eat_(token_type type){
-                        if( boost::get_optional_value_or(tok_.peak(), not_a_token_ ) ^ type ){
+                        if( boost::get_optional_value_or(tok_.peak(), not_a_token_ ).type() == type ){
                                 tok_.next();
                                 return true;
                         }
@@ -157,7 +157,7 @@ namespace json_parser { namespace detail {
                 }
 
                 Iter first_, last_;
-                tokenizer<Iter> tok_;
+                basic_tokenizer<Iter> tok_;
                 token not_a_token_;
                 Maker& maker_;
         };

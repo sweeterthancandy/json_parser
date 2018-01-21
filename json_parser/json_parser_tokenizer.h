@@ -6,7 +6,7 @@
 #include <boost/optional/optional_io.hpp>
 
 
-namespace json_parser{ namespace detail{ 
+namespace json_parser{
 
         #define TOKEN_TYPES/**/\
                 (left_curl)\
@@ -66,19 +66,73 @@ namespace json_parser{ namespace detail{
         };
 
         template<class Iter>
-        struct tokenizer{
+        struct basic_tokenizer{
+
                 struct state_t{
                         Iter first_, last_;
                         boost::optional<token> peak_;
                 };
 
-                tokenizer(Iter first, Iter last){
+
+                struct iterator{
+                        explicit iterator(basic_tokenizer* self = 0)
+                                :self_{self}{
+                                if( !! self ){
+                                        if( ! self_->eos()){
+                                                tok_ = self_->peak();
+                                        }
+                                }
+                        }
+
+
+                        friend bool operator==(iterator const& left,
+                                               iterator const& right){
+                                /*
+                                             |Fake | Real  |
+                                        -----+-----+-------+
+                                        Fake |  Y  |   N   |
+                                        Real |  N  |ByValue|
+                                */
+                                if( left.self_ == 0 && right.self_ == 0 )
+                                        return true;
+                                if( left.self_ == 0 ){
+                                        return right.self_->eos();
+                                 } else {
+                                        return left.self_->eos();
+                                 }
+                                return false;
+                        }
+                        friend bool operator!=(iterator const& left,
+                                               iterator const& right){
+                                return ! ( left == right);
+                        }
+                        iterator operator++(){
+                                tok_ = self_->next();
+                                return *this;
+                        }
+                        token const& operator*()const{
+                                return *tok_;
+                        }
+                        token const* operator->()const{
+                                return &*tok_;
+                        }
+                private:
+                        basic_tokenizer* self_{0};
+                        boost::optional<token> tok_;
+                };
+
+
+
+                explicit basic_tokenizer(std::string const& str)
+                        : basic_tokenizer(str.begin(), str.end())
+                {}
+                basic_tokenizer(Iter first, Iter last){
                         state_.first_ = first;
                         state_.last_ = last;
 
                         next();
                 }
-                bool eos()const{return state_.first_ == state_.last_;}
+                bool eos()const{return state_.first_ == state_.last_ && !state_.peak_;}
                 boost::optional<token> peak(){return state_.peak_;}
                 boost::optional<token> next(){
                         state_.peak_ = next_();
@@ -104,6 +158,15 @@ namespace json_parser{ namespace detail{
                                 )
                         );
                 }
+
+                iterator token_begin(){
+                        return iterator{this};
+                }
+                iterator token_end(){
+                        return iterator{0};
+                }
+
+
         private:
                 boost::optional<token> next_(){
 
@@ -210,9 +273,7 @@ namespace json_parser{ namespace detail{
                 state_t state_;
         };
 
-        inline
-        bool operator^(token const& l_param, token_type r_param)noexcept{
-                return l_param.type() == r_param;
-        }
+        using tokenizer = basic_tokenizer<std::string::const_iterator>;
+
         #undef TOKENIZER_ERROR
-} }
+} // json_parser
