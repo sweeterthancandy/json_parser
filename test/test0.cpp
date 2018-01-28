@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <unordered_map>
+#include <list>
 
 #include "json_parser.h"
 
@@ -238,6 +239,7 @@ struct JsonObject{
                         Type_Array = Begin_Aggregate,
                         Type_Map,
                 End_Aggregate,
+                Type_NotAType = 100,
         };
         static std::string Type_to_string(Type e) {
                 switch (e) {
@@ -722,15 +724,73 @@ struct JsonObject{
                 virtual VisitorCtrl begin_map(size_t n){ return VisitorCtrl_Decend; }
                 virtual void end_map(){ }
         };
-        struct pretty_visitor{
+        struct graph_visitor;
+
+
+#if 0
+        struct pretty_visitor : visitor{
                 enum Options{
                         Option_QuoteString = 1,
                         Option_Newlines = 2,
                 };
-                explicit to_string_visitor(std::ostream* ostr):ostr_{ostr}{}
+                explicit pretty_visitor(std::ostream* ostr):ostr_{ostr}{}
+
+                void on_nil()override{
+                        do_primitive_("<nil>");
+                }
+                void on_bool(bool value)override{
+                        do_primitive_( value ? "true" : "false" );
+                }
+                void on_integer(std::int64_t value)override{
+                        do_primitive_( boost::lexical_cast<std::string>(value));
+                }
+                void on_float(double value)override{
+                        do_primitive_( boost::lexical_cast<std::string>(value));
+                }
+                void on_string(std::string const& value)override{
+                        do_primitive_( std::quoted(value) );
+                }
+                VisitorCtrl begin_array(size_t n)override{
+                        *ostr_ << make_indent_() << "[" << newline_();
+                        count_.emplace_back(0);
+                        return VisitorCtrl_Decend;
+                }
+                void end_array()override{
+                        count_.pop_back();
+                        *ostr_ << make_indent_() << "]" << newline_();
+                }
+                VisitorCtrl begin_map(size_t n)override{
+                        *ostr_ << make_indent_() << "{\n";
+                        count_.emplace_back(0);
+                        return VisitorCtrl_Decend;
+                }
+                void end_map()override{
+                        count_.pop_back();
+                        *ostr_ << make_indent_() << "}\n";
+                }
         private:
+                template<class Streamable>
+                void do_primitive_(Streamable&& ss){
+                        *ostr_ << make_indent_() << ss << newline_();
+                        ++count_.back();
+                }
+                std::string make_indent_()const{
+                        const char* comma = ( count_.back() == 0 ? "" : ", ");
+                        if( count_.size() ){
+                                return std::string(count_.size()*4,' ') + comma;
+                        }
+                        return comma;
+                }
+                std::string newline_()const{
+                        return "\n";
+                }
+                unsigned indent_{0};
+                std::string buffer_;
                 std::ostream* ostr_;
+                // I need to keep track of what the element index is
+                std::vector<count_> stack_;
         };
+#endif
         struct debug_visitor : visitor{
                 void on_nil()override{
                         std::cout << make_indent_() << "on_nil()\n";
@@ -881,63 +941,7 @@ struct JsonObject{
                         }
                 }
         }
-        void Display(std::ostream& ostr, unsigned indent = 0)const{
-                #if 0
-                auto print_indent = [&](){
-                        ostr << std::string(indent*4,' ');
-                };
-                const char* comma = "";
-                switch(type_){
-                case Type_Nil:
-                        print_indent();
-                        ostr << "{}";
-                        break;
-                case Type_Bool:
-                        print_indent();
-                        ostr << as_bool_;
-                        break;
-                case Type_Integer:
-                        print_indent();
-                        ostr << as_int_;
-                        break;
-                case Type_Float:
-                        print_indent();
-                        ostr << as_float_;
-                        break;
-                case Type_String:
-                        print_indent();
-                        ostr << as_string_;
-                        break;
-                case Type_Array:
-                        print_indent();
-                        ostr << "[\n";
-                        comma = ", ";
-                        for(auto const& _ : as_array_ ){
-                                _.Display(ostr, indent+1);
-                                ostr << comma << "\n";
-                                comma = ", ";
-                        }
-                        print_indent();
-                        ostr << "]";
-                        break;
-                case Type_Map:
-                        print_indent();
-                        ostr << "{\n";
-                        comma = ", ";
-                        for(auto const& _ : as_map_ ){
-                                _.first.Display(ostr, indent+1);
-                                _.second.Display(ostr, indent+1);
-                                ostr << comma << "\n";
-                                comma = ", ";
-                        }
-                        print_indent();
-                        ostr << "}";
-                        break;
-                }
-                #endif
-                debug_visitor v;
-                this->Accept(v);
-        }
+        void Display(std::ostream& ostr, unsigned indent = 0)const;
         friend std::ostream& operator<<(std::ostream& ostr, JsonObject const& self){
                 self.Display(ostr);
                 return ostr;
@@ -999,6 +1003,338 @@ private:
                 map_type as_map_;
         };
 };
+/*
+        To actually print json reasonable, I think I need to create a 
+        meta object, with logs of new lines, so that we print the following.
+                {
+                        "name":"bob",
+                        "primes":[
+                                2,
+                                3,
+                                5
+                        },
+                }
+ */
+namespace Detail{
+}
+struct JsonObject::graph_visitor : visitor{
+
+        /*
+                Yes we're creating a direct graph
+                to pritn a json object. The idea is 
+                that we create a graph with logs of
+                newlines, then collage the newlines 
+                to something sensible,
+         */
+        struct Node{
+                enum NodeType{
+                        // atomic text
+                        NodeType_Text,
+                        /* optional space, for example consimer 
+                              {'hello':[1,{'a':[2,3]}]},
+                           this may get rendered as
+                              {
+                                'hello':[
+                                  1,
+                                  {
+                                    'a':[
+                                      2,
+                                      3
+                                    ]
+                                  }
+                                ]
+                              },
+                           because consider the case where 'a' is replaced by a 
+                           100 charcter sentance, or each number repalced by a 
+                           50 digit number, the above algrebaric formatting 
+                           would be correct. However in the above case, we could
+                           'collapase' parts of the formatting using simple rules.
+                                We use options to have an optional Text, which 
+                           will almost certainly be whitespace. We can then
+                           run an optimizer to remove the Optional Text where
+                           unneccasry
+                        */
+                        NodeType_Optional,
+                        /*
+                          A Vector is going to be the aggragate type we use.
+                          for all elements whithin a map or array, they are 
+                          part of the same vector etc, meaning the indent 
+                          should be consistent. In the above example we should
+                          get 
+                                Vector("hello:", Vector(1, Vector("a:", Vector(2,3))))
+                                Vector("hello:", Optional("\n    "), Vector(1, Vector("a:", Vector(2,3))))
+
+                         */
+                        NodeType_Vector,
+                };
+                explicit Node(NodeType type):type_{type}{}
+                virtual ~Node()=default;
+
+                
+                Node(Node const&)=delete;
+                Node(Node&&)=delete;
+                Node& operator=(Node const&)=delete;
+                Node& operator=(Node&&)=delete;
+
+                // maybe make this multiline
+                virtual size_t Width()const=0;
+                virtual void Render(std::ostream& ostr)const=0;
+                virtual std::string DebugString()const=0;
+                NodeType GetType()const{ return type_; }
+        private:
+                NodeType type_;
+        };
+        struct Text : Node{
+                explicit Text(std::string str):
+                        Node{NodeType_Text},
+                        str_{std::move(str)}
+                {}
+                size_t Width()const override{
+                        return str_.size();
+                }
+                void Render(std::ostream& ostr)const override{
+                        ostr << str_;
+                }
+                std::string DebugString()const override{
+                        std::stringstream sstr;
+                        sstr << "Text<\"" << str_ << "\">";
+                        return sstr.str();
+                }
+        private:
+                std::string str_;
+        };
+        struct Vector : Node{
+                using container_type = std::vector<std::shared_ptr<Node> >;
+                using const_iterator = container_type::const_iterator;
+
+                explicit Vector():
+                        Node{NodeType_Vector}
+                {}
+                ~Vector(){
+                        std::cerr << "Dying<" << this << ">\n";
+                }
+
+                Vector(Vector const&)=delete;
+                Vector(Vector&&)=delete;
+                Vector& operator=(Vector const&)=delete;
+                Vector& operator=(Vector&&)=delete;
+
+                void push(std::shared_ptr<Node> ptr){ 
+                        std::cerr << "push<" << this << ", " << ptr.get() << ">\n";
+                        vec_.push_back(ptr);
+                }
+                auto begin()const{ return vec_.begin(); }
+                auto end()const{ return vec_.end(); }
+                
+
+                // this doesn't make sense unless we ignore newlines etc
+                size_t Width()const override{
+                        size_t sigma = 0;
+                        for(  auto const& ptr : vec_ ){
+                                sigma += ptr->Width();
+                        }
+                        return sigma;
+                }
+                std::string DebugString()const override{
+                        std::stringstream sstr;
+                        sstr << "[";
+                        const char* comma = "";
+                        for( auto const& ptr : vec_ ){
+                                sstr << comma << ptr->DebugString();
+                                comma = ", ";
+                        }
+                        sstr << "]";
+                        return sstr.str();
+                }
+                void Render(std::ostream& ostr)const override{
+                        for( auto const& ptr : vec_ ){
+                                ptr->Render(ostr);
+                        }
+                }
+        private:
+                container_type vec_;
+        };
+        // this class is basucally meta-information, it
+        // isn't optional as in 'boost::optional' optional,
+        // but optional as in call Optional::Render() or
+        // not without effecting correcness, only prettyness
+        struct Optional : Node{
+                explicit Optional(std::shared_ptr<Node> ptr):
+                        Node{NodeType_Optional},
+                        ptr_{std::move(ptr)}
+                {}
+                size_t Width()const override{
+                        return ptr_->Width();
+                }
+                void Render(std::ostream& ostr)const override{
+                        ptr_->Render(ostr);
+                }
+                std::string DebugString()const override{
+                        std::stringstream sstr;
+                        sstr << "Optional<" << ptr_->DebugString() << ">";
+                        return sstr.str();
+                }
+        private:
+                std::shared_ptr<Node> ptr_;
+        };
+
+        struct GVStackFrame{
+                explicit GVStackFrame(Type t = Type_NotAType)
+                        :type{t}
+                        ,vector{ new Vector }
+                {}
+                GVStackFrame(GVStackFrame const&)=delete;
+                GVStackFrame(GVStackFrame&&)=delete;
+                GVStackFrame& operator=(GVStackFrame const&)=delete;
+                GVStackFrame& operator=(GVStackFrame&&)=delete;
+                Type type;
+                std::shared_ptr<Node> vector;
+                size_t index{0};
+        };
+
+        graph_visitor(){
+                stack_.push_back(new GVStackFrame);
+        }
+
+        graph_visitor(graph_visitor const&)=delete;
+        graph_visitor(graph_visitor&&)=delete;
+        graph_visitor& operator=(graph_visitor const&)=delete;
+        graph_visitor& operator=(graph_visitor&&)=delete;
+
+        
+        void on_nil()override{
+                do_primitive_("<nil>");
+        }
+        void on_bool(bool value)override{
+                do_primitive_( value ? "true" : "false" );
+        }
+        void on_integer(std::int64_t value)override{
+                do_primitive_( boost::lexical_cast<std::string>(value));
+        }
+        void on_float(double value)override{
+                do_primitive_( boost::lexical_cast<std::string>(value));
+        }
+        void on_string(std::string const& value)override{
+                do_primitive_( boost::lexical_cast<std::string>(std::quoted(value)) );
+        }
+        VisitorCtrl begin_array(size_t n)override{
+                do_begin_(Type_Array, n);
+                return VisitorCtrl_Decend;
+        }
+        void end_array()override{
+                do_end_( Type_Array);
+        }
+        VisitorCtrl begin_map(size_t n)override{
+                do_begin_(Type_Map, n);
+                return VisitorCtrl_Decend;
+        }
+        void end_map()override{
+                do_end_(Type_Map);
+        }
+        void Render(std::ostream& ostr)const{
+                std::cout << "Doing it\n";
+                Debug();
+                stack_.back()->vector->Render(ostr);
+        }
+        void Debug()const{
+                for(auto& s : stack_ ){
+                        //std::cout << s.vector->DebugString() << "\n";
+                }
+        }
+private:
+        void do_primitive_(std::string str){
+                if( stack_.back()->type == Type_Map ){
+                        if( stack_.back()->index % 2 == 0 )
+                                str += ":";
+                }
+                #if 0
+                std::string indent;
+                if( stack_.size() )
+                        indent = std::string(stack_.size()*4, ' ');
+                std::string whitespace = "\n" + indent;
+                stack_.back()->vector->push( std::make_shared<Optional>(std::make_shared<Text>(whitespace)) );
+                if( stack_.back()->index ){
+                        stack_.back()->vector->push( std::make_shared<Text>(", ") );
+                }
+                #endif
+                auto text = std::shared_ptr<Node>(new Text{std::move(str)});
+                reinterpret_cast<Vector*>(stack_.back()->vector.get())->push(text);
+                ++stack_.back()->index;
+        }
+        void do_begin_(Type type, size_t n){
+                stack_.emplace_back(new GVStackFrame{type});
+        }
+        void do_end_(Type type){
+                std::cerr << "popping " << stack_.size() << "\n";
+                std::shared_ptr<Node> vec = stack_.back()->vector;
+                stack_.pop_back();
+
+                if( stack_.size() ){
+                        reinterpret_cast<Vector*>(stack_.back()->vector.get())->push(vec);
+                }
+        }
+
+private:
+        std::list<GVStackFrame*> stack_;
+};
+void JsonObject::Display(std::ostream& ostr, unsigned indent)const{
+        #if 0
+        auto print_indent = [&](){
+                ostr << std::string(indent*4,' ');
+        };
+        const char* comma = "";
+        switch(type_){
+        case Type_Nil:
+                print_indent();
+                ostr << "{}";
+                break;
+        case Type_Bool:
+                print_indent();
+                ostr << as_bool_;
+                break;
+        case Type_Integer:
+                print_indent();
+                ostr << as_int_;
+                break;
+        case Type_Float:
+                print_indent();
+                ostr << as_float_;
+                break;
+        case Type_String:
+                print_indent();
+                ostr << as_string_;
+                break;
+        case Type_Array:
+                print_indent();
+                ostr << "[\n";
+                comma = ", ";
+                for(auto const& _ : as_array_ ){
+                        _.Display(ostr, indent+1);
+                        ostr << comma << "\n";
+                        comma = ", ";
+                }
+                print_indent();
+                ostr << "]";
+                break;
+        case Type_Map:
+                print_indent();
+                ostr << "{\n";
+                comma = ", ";
+                for(auto const& _ : as_map_ ){
+                        _.first.Display(ostr, indent+1);
+                        _.second.Display(ostr, indent+1);
+                        ostr << comma << "\n";
+                        comma = ", ";
+                }
+                print_indent();
+                ostr << "}";
+                break;
+        }
+        #endif
+        graph_visitor v;
+        this->Accept(v);
+        v.Render(std::cout);
+}
 
 namespace Frontend{
         struct ArrayType{
@@ -1006,7 +1342,7 @@ namespace Frontend{
                 JsonObject operator()(Args&&... args)const{
                         JsonObject obj(JsonObject::Tag_Array{});
                         int aux[] = {0, ( obj.push_back_unchecked( args), 0 )... };
-                        return std::move(obj);
+                        return obj;
                 }
         };
         struct MapType{
@@ -1029,7 +1365,7 @@ namespace Frontend{
                                         obj.emplace_unchecked( std::move( vec_[idx+0] ),
                                                                std::move( vec_[idx+1] ) );
                                 }
-                                return std::move(obj);
+                                return obj;
                         }
                 private:
                         std::vector< JsonObject> vec_;
@@ -1041,7 +1377,7 @@ namespace Frontend{
                 }
                 operator JsonObject const()const{
                         JsonObject obj(JsonObject::Tag_Map{});
-                        return std::move(obj);
+                        return obj;
                 }
         };
 
@@ -1097,7 +1433,7 @@ namespace Detail{
                 JsonObject make(){ 
                         JsonObject tmp = std::move(out_.back());
                         out_.pop_back();
-                        return std::move(tmp);
+                        return tmp;
                 } 
         private:
                 void add_any_(JsonObject&& obj){
