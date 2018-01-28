@@ -102,6 +102,7 @@ protected:
         };
 };
 
+#if 0
 TEST_F( Parser, valid_strings){
         for( auto const& str : valid_strings ){
                 EXPECT_TRUE( !!try_parse(str) );
@@ -211,6 +212,8 @@ TEST(tokenizer, one){
         EXPECT_TRUE(tok.eos());
 }
 
+#endif
+
 struct JsonObject;
 
 namespace std{
@@ -242,7 +245,34 @@ struct JsonObject{
                 Type_Array,
                 Type_Map,
         };
-        #ifdef NOT_DEFINED
+        static std::string Type_to_string(Type e) {
+                switch (e) {
+                case Begin_Primitive:
+                        return "Begin_Primitive";
+                case Type_Nil:
+                        return "Type_Nil";
+                case Type_Bool:
+                        return "Type_Bool";
+                case Type_Integer:
+                        return "Type_Integer";
+                case Type_Float:
+                        return "Type_Float";
+                case Type_String:
+                        return "Type_String";
+                case End_Primitive:
+                        return "End_Primitive";
+                case Type_Array:
+                        return "Type_Array";
+                case Type_Map:
+                        return "Type_Map";
+                default:{
+                        std::stringstream sstr;
+                        sstr << "unknown(" << (int)e << ")";
+                        return sstr.str();
+                }
+                }
+        }
+#ifdef NOT_DEFINED
                 switch(type_){
                 case Type_Nil:
                         break;
@@ -265,7 +295,7 @@ struct JsonObject{
                 form
                         auto arr = Tag_Array(1,2,3)
          */
-        using Tag_Nil    = std::integral_constant<Type, Type_Bool>;
+        using Tag_Nil     = std::integral_constant<Type, Type_Nil>;
         using Tag_Bool    = std::integral_constant<Type, Type_Bool>;
         using Tag_Integer = std::integral_constant<Type, Type_Integer>;
         using Tag_Float   = std::integral_constant<Type, Type_Float>;
@@ -273,90 +303,110 @@ struct JsonObject{
         using Tag_Array   = std::integral_constant<Type, Type_Array>;
         using Tag_Map     = std::integral_constant<Type, Type_Map>;
 
-        JsonObject():
-                JsonObject{Type_Nil}
-        {}
-        explicit JsonObject(Type type):type_{type}{
-                switch(type_){
-                case Type_Nil:
-                        break;
-                case Type_Bool:
-                        new (&as_bool_) bool(false);
-                        break;
-                case Type_Integer:
-                        new (&as_int_) std::int64_t(static_cast<std::int64_t>(0));
-                        break;
-                case Type_Float:
-                        new (&as_float_) double(static_cast<double>(.0));
-                        break;
-                case Type_String:
-                        new (&as_string_) std::string{};
-                        break;
-                case Type_Array:
-                        new (&as_array_) array_type();
-                        break;
-                case Type_Map:
-                        new (&as_map_) map_type();
-                        break;
-                }
+
+        void DoAssign(Tag_Nil){
+                type_ = Type_Nil;
         }
-        JsonObject(Tag_Bool, bool val):type_{Type_Bool}{
+        void DoAssign(Tag_Bool, bool val = false){
+                type_ = Type_Bool;
                 new (&as_bool_) bool(val);
         }
-        JsonObject(Tag_Integer, std::int64_t val):type_{Type_Integer}{
+        void DoAssign(Tag_Integer, std::int64_t val = 0){
+                type_ = Type_Integer;
                 new (&as_int_) std::int64_t{val};
         }
-        JsonObject(Tag_Float, double val):type_{Type_Float}{
+        void DoAssign(Tag_Float, double val = .0){
+                type_ = Type_Float;
                 new (&as_float_) double{val};
         }
+        void DoAssign(Tag_String){
+                DoAssign(Tag_String{}, "");
+        }
         template<class Arg>
-        JsonObject(Tag_String, Arg&& arg):type_{Type_String}{
+        void DoAssign(Tag_String, Arg&& arg){
+                type_ = Type_String;
                 new (&as_string_) std::string{arg};
         }
-        explicit JsonObject(Tag_Array):type_{Type_Array}{
+        void DoAssign(Tag_Array){
+                type_ = Type_Array;
                 new (&as_array_) array_type{};
         }
-        explicit JsonObject(Tag_Map):type_{Type_Map}{
+        template<class ArrayTypeParam>
+        void DoAssign(Tag_Array, ArrayTypeParam&& val){
+                type_ = Type_Array;
+                new (&as_array_) array_type{std::forward<ArrayTypeParam>(val)};
+        }
+        void DoAssign(Tag_Map){
+                type_ = Type_Map;
                 new (&as_map_) map_type{};
         }
+        template<class MapTypeParam>
+        void DoAssign(Tag_Map, MapTypeParam&& val){
+                type_ = Type_Map;
+                new (&as_map_) map_type{std::forward<MapTypeParam>(val)};
+        }
+
         template<class Value>
-        explicit JsonObject( precedence_device<0>, Value&& val)
+        void AssignImpl( precedence_device<0>, Value&& val)
         {
                 std::cout << "val = " << boost::typeindex::type_id_with_cvr<Value>() << "\n";
+                std::cout << "val = " << boost::typeindex::type_id_with_cvr< std::remove_cv_t<std::decay_t<Value> > >() << "\n";
+                throw std::domain_error("not a known type");
         }
-        template<class Value, class = std::enable_if_t< ! std::is_same<decltype( std::declval<Value>().ToJsonObject() ), void >::value > >
-        explicit JsonObject( precedence_device<5>, Value&& val)
-                : JsonObject{ val.ToJsonObject() }
-        {}
-        template<class Value, class = std::enable_if_t< std::is_constructible<std::string,Value>::value > >
-        explicit JsonObject( precedence_device<6>, Value&& val)
-                : JsonObject{ Tag_String{}, std::forward<Value>(val) }
-        {}
-        template<class Value, class = std::enable_if_t< std::is_same<std::decay_t<Value>, std::string >::value > >
-        explicit JsonObject( precedence_device<7>, Value&& val)
-                : JsonObject{ Tag_String{}, std::forward<Value>(val) }
-        {}
-        template<class Value, class = std::enable_if_t< std::is_floating_point<std::decay_t<Value> >::value > >
-        explicit JsonObject( precedence_device<8>, Value&& val)
-                : JsonObject{ Tag_Float{}, static_cast<double>(val) }
-        {}
-        template<class Value, class = std::enable_if_t< std::is_integral<std::decay_t<Value> >::value > >
-        explicit JsonObject( precedence_device<9>, Value&& val)
-                : JsonObject{ Tag_Integer{}, std::forward<Value>(val) }
-        {}
-        template<class Value, class = std::enable_if_t< std::is_same<std::decay_t<Value>, bool>::value > >
-        explicit JsonObject( precedence_device<10>, Value&& val)
-                : JsonObject{ Tag_Bool{}, std::forward<Value>(val) }
-        {}
-        template<class Value, class = std::enable_if_t< ! std::is_same<JsonObject, std::decay_t<Value> >::value > >
-        explicit JsonObject(Value&& val)
-                : JsonObject{ precedence_device<10>{}, std::forward<Value>(val) }
-        {}
-        JsonObject(JsonObject const& that)
-                :type_{that.type_}
+        template<class Value>
+        std::enable_if_t< std::is_same<std::decay_t<Value>, Tag_Array >::value > 
+        AssignImpl( precedence_device<3>, Value&& val){
+                DoAssign(Tag_Array{});
+        }
+        template<class Value>
+        std::enable_if_t< std::is_same<std::remove_cv_t<std::decay_t<Value> >, Tag_Map >::value > 
+        AssignImpl( precedence_device<4>, Value&& val){
+                DoAssign(Tag_Map{});
+        }
+        template<class Value>
+        std::enable_if_t< ! std::is_same<decltype( std::declval<Value>().ToJsonObject() ), void >::value >
+        AssignImpl( precedence_device<5>, Value&& val){
+                // XXX is this right?
+                Assign(val.ToJsonObject());
+        }
+        template<class Value>
+        std::enable_if_t< std::is_constructible<std::string,Value>::value >
+        AssignImpl( precedence_device<6>, Value&& val){
+                DoAssign( Tag_String{}, std::forward<Value>(val));
+        }
+        template<class Value>
+        std::enable_if_t< std::is_same<std::decay_t<Value>, std::string >::value >
+        AssignImpl( precedence_device<7>, Value&& val){
+                DoAssign( Tag_String{}, std::forward<Value>(val) );
+        }
+        template<class Value>
+        std::enable_if_t< std::is_floating_point<std::decay_t<Value> >::value >
+        AssignImpl( precedence_device<8>, Value&& val){
+                DoAssign( Tag_Float{}, static_cast<double>(val) );
+        }
+        template<class Value>
+        std::enable_if_t< std::is_integral<std::decay_t<Value> >::value >
+        AssignImpl( precedence_device<9>, Value&& val){
+                DoAssign( Tag_Integer{}, std::forward<Value>(val) );
+        }
+        template<class Value>
+        std::enable_if_t< std::is_same<std::decay_t<Value>, bool>::value >
+        AssignImpl( precedence_device<10>, Value&& val){
+                DoAssign( Tag_Bool{}, std::forward<Value>(val));
+        }
+        template<class Value>
+        std::enable_if_t< ! std::is_same<JsonObject, std::remove_cv_t<std::decay_t<Value> > >::value >
+        Assign(Value&& val){
+                AssignImpl( precedence_device<10>{}, std::forward<Value>(val) );
+        }
+        template<class Value>
+        std::enable_if_t< std::is_same<JsonObject, std::remove_cv_t<std::decay_t<Value> > >::value >
+        Assign(Value&& that)
         {
+                type_ = that.type_;
                 switch(type_){
                 case Type_Nil:
+                        DoAssign(Tag_Nil{});
                         break;
                 case Type_Bool:
                         new (&as_bool_) bool(that.as_bool_);
@@ -371,46 +421,64 @@ struct JsonObject{
                         new (&as_string_) std::string{that.as_string_};
                         break;
                 case Type_Array:
-                        new (&as_array_) array_type(that.as_array_);
+                        if( std::is_rvalue_reference<Value>::value ){
+                                new (&as_array_) array_type(std::move(that.as_array_));
+                        } else{
+                                new (&as_array_) array_type(that.as_array_);
+                        }
                         break;
                 case Type_Map:
-                        new (&as_map_) map_type(that.as_map_);
+                        if( std::is_rvalue_reference<Value>::value ){
+                                new (&as_map_) map_type(std::move(that.as_map_));
+                        } else{
+                                new (&as_map_) map_type(that.as_map_);
+                        }
                         break;
                 }
         }
-        JsonObject(JsonObject&& that)
-                :type_{that.type_}
+
+        JsonObject(){
+                DoAssign(Tag_Nil{});
+        }
+        JsonObject(JsonObject const& that){
+                Assign(that);
+        }
+        JsonObject(JsonObject&& that){
+                Assign(that);
+        }
+        template<class Arg>
+        JsonObject(Arg&& arg)
         {
-                switch(type_){
-                case Type_Nil:
-                        break;
-                case Type_Bool:
-                        new (&as_bool_) bool(that.as_bool_);
-                        break;
-                case Type_Integer:
-                        new (&as_int_) std::int64_t(that.as_int_);
-                        break;
-                case Type_Float:
-                        new (&as_float_) double(that.as_float_);
-                        break;
-                case Type_String:
-                        new (&as_string_) std::string{that.as_string_};
-                        break;
-                case Type_Array:
-                        new (&as_array_) array_type(std::move(that.as_array_));
-                        break;
-                case Type_Map:
-                        new (&as_map_) map_type(std::move(that.as_map_));
-                        break;
-                }
+                Assign(std::forward<Arg>(arg));
         }
         ~JsonObject(){
+        }
+        
+        template<class Value>
+        JsonObject& operator=(Value&& value){
+                Assign(std::forward<Value>(value));
+                return *this;
         }
 
         auto AsInteger()const{
                 if( type_ == Type_Integer )
                         return as_int_;
                 throw std::domain_error("not an integer");
+        }
+        auto AsFloat()const{
+                if( type_ == Type_Float )
+                        return as_float_;
+                throw std::domain_error("not an float");
+        }
+        auto AsBool()const{
+                if( type_ == Type_Bool )
+                        return as_bool_;
+                throw std::domain_error("not an bool");
+        }
+        auto const& AsString()const{
+                if( type_ == Type_String )
+                        return as_string_;
+                throw std::domain_error("not an string");
         }
         template<class Value>
         void push_back(Value&& val){
@@ -432,24 +500,37 @@ struct JsonObject{
         void emplace_unchecked(Key&& key, Value&& val){
                 as_map_.emplace(std::forward<Key>(key), std::forward<Value>(val));
         }
-
-        static JsonObject MakeBool(bool val){
-                return JsonObject( std::integral_constant<Type, Type_Bool>{}, val);
+        size_t size()const{
+                switch(type_){
+                case Type_Array:
+                        return as_array_.size();
+                case Type_Map:
+                        return as_map_.size();
+                default:
+                        throw std::domain_error("not sizeable");
+                }
         }
 
 
-        template<class Value>
-        JsonObject& operator=(Value&& value){
-                return *this = JsonObject{std::forward<Value>(value)};
-        }
-        template<class Key, class = std::enable_if_t< std::is_integral<std::decay_t<Key> >::value > >
-        JsonObject& operator[](Key key){
+        template<class Key>
+        std::enable_if_t< std::is_integral<std::decay_t<Key> >::value, JsonObject& >
+        operator[](Key key){
                 if( type_ ==  Type_Array ){
                         return as_array_.at(static_cast<typename array_type::size_type>(key));
                 } else if( type_ == Type_Map ){
                         std::int64_t casted = static_cast<std::int64_t>(key);
-                        JsonObject key(Tag_Integer{}, casted);
-                        return as_map_[key];
+                        JsonObject mapped(casted);
+                        return as_map_[mapped];
+                } else {
+                        throw std::domain_error("not a map or array");
+                }
+        }
+        template<class Key>
+        std::enable_if_t< ! std::is_integral<std::decay_t<Key> >::value, JsonObject& >
+        operator[](Key key){
+                if( type_ == Type_Map ){
+                        JsonObject tmp{key};
+                        return as_map_[tmp];
                 } else {
                         throw std::domain_error("not a map or array");
                 }
@@ -506,6 +587,21 @@ struct JsonObject{
         }
         bool operator==(JsonObject const& that)const{
                 return ! ( ( *this < that ) || ( that < *this ) );
+        }
+        #if 0
+        template<class LeftParam>
+        friend
+        bool operator==(LeftParam&& lp, JsonObject const& rp){
+                return rp == lp;
+        }
+        template<class LeftParam>
+        friend
+        bool operator!=(LeftParam&& lp, JsonObject const& rp){
+                return rp != lp;
+        }
+        #endif
+        bool operator!=(JsonObject const& that)const{
+                return ! ( *this == that);
         }
         void Display(std::ostream& ostr, unsigned indent = 0)const{
                 auto print_indent = [&](){
@@ -564,6 +660,10 @@ struct JsonObject{
                 self.Display(ostr);
                 return ostr;
         }
+        void Debug()const{
+                std::cout << "{type=" << Type_to_string(type_) 
+                        << ", <data>=" << to_string() << "}\n";
+        }
 private:
         Type type_;
         union {
@@ -600,7 +700,7 @@ namespace Frontend{
                                 return ToJsonObject();
                         }
                         JsonObject ToJsonObject()const{
-                                JsonObject obj(JsonObject::Type_Map);
+                                JsonObject obj(JsonObject::Tag_Map{});
                                 for(size_t idx =0;idx < vec_.size();idx += 2 ){
                                         obj.emplace_unchecked( std::move( vec_[0] ),
                                                                std::move( vec_[1] ) );
@@ -616,7 +716,7 @@ namespace Frontend{
                         return impl(std::forward<Key>(key), std::forward<Value>(value));
                 }
                 operator JsonObject const()const{
-                        JsonObject obj(JsonObject::Type_Map);
+                        JsonObject obj(JsonObject::Tag_Map{});
                         return std::move(obj);
                 }
         };
@@ -675,9 +775,97 @@ TEST(JsonObject, Integer){
         EXPECT_EQ( "12", obj.to_string() );
         EXPECT_EQ( 12, obj.AsInteger() );
         obj = 34;
-
+        EXPECT_EQ( JsonObject::Type_Integer, obj.GetType() );
+        EXPECT_EQ( "34", obj.to_string() );
+        EXPECT_EQ( 34, obj.AsInteger() );
+}
+TEST(JsonObject, String){
+        JsonObject obj("hello");
+        EXPECT_EQ( JsonObject::Type_String, obj.GetType() );
+        EXPECT_EQ( "hello", obj.AsString() );
+        obj = std::string("world");
+        EXPECT_EQ( "world", obj.AsString() );
 }
 
+TEST(JsonObject, assignment){
+        JsonObject obj("hello");
+        obj = 23;
+        EXPECT_EQ( JsonObject::Type_Integer, obj.GetType() );
+        EXPECT_EQ( 23, obj.AsInteger() );
+        obj = 12.23;
+        EXPECT_EQ( JsonObject::Type_Float, obj.GetType() );
+        obj = "hello";
+        EXPECT_EQ( JsonObject::Type_String, obj.GetType() );
+        EXPECT_EQ( "hello", obj.AsString() );
+}
+TEST(JsonObject, Array){
+        JsonObject arr{JsonObject::Tag_Array{}};
+        arr.push_back(1);
+        arr.push_back(2);
+        arr.push_back(3);
+        std::cout << "arr = " << arr << "\n";
+        EXPECT_EQ( 3, arr.size());
+        EXPECT_TRUE( arr[0] == 1 );
+        EXPECT_TRUE( arr[0] != "Hello");
+        EXPECT_ANY_THROW( arr[4] );
+        EXPECT_ANY_THROW( arr["hello"]);
+        arr = JsonObject{JsonObject::Tag_Array{}};
+        EXPECT_EQ( 0, arr.size());
+        arr.push_back(23.34);
+        EXPECT_NEAR(23.34, arr[0].AsFloat(), 0.001 );
+}
+TEST(JsonObject, Map){
+        JsonObject m(JsonObject::Tag_Map{});
+        EXPECT_EQ( 0, m.size());
+        m.emplace( "one", 1);
+        m.emplace( "two", 2);
+        EXPECT_EQ( 2, m.size());
+        EXPECT_TRUE( m["one"] == 1 );
+        EXPECT_TRUE( m["one"] != 2 );
+        EXPECT_TRUE( m["two"] == 2 );
+        m["two"] = 3;
+        EXPECT_TRUE( m["two"] != 2 );
+        EXPECT_TRUE( m["two"] == 3 );
+        m["two"] = m["one"];
+        m = 1;
+        EXPECT_ANY_THROW( m.size() );
+        m = JsonObject{JsonObject::Tag_Map{}};
+        EXPECT_EQ( 0, m.size());
+}
+
+TEST(JsonObject, FrontendArray){
+        using namespace Frontend;
+        auto arr = Array(2,"hello",false);
+        EXPECT_EQ( 3, arr.size());
+        EXPECT_TRUE( arr[0] == 2 );
+        EXPECT_TRUE( arr[1] == "hello" );
+        EXPECT_TRUE( arr[2] == false );
+
+        arr.push_back( Array());
+        arr.push_back( true);
+        arr.push_back( Array(Array()));
+
+        EXPECT_EQ( 6, arr.size());
+        EXPECT_EQ( JsonObject::Type_Array, arr.GetType());
+        EXPECT_EQ( JsonObject::Type_Integer, arr[0].GetType());
+        EXPECT_EQ( JsonObject::Type_String,  arr[1].GetType());
+        EXPECT_EQ( JsonObject::Type_Bool,    arr[2].GetType());
+        EXPECT_EQ( JsonObject::Type_Array,   arr[3].GetType());
+        EXPECT_EQ( JsonObject::Type_Bool,    arr[4].GetType());
+        EXPECT_EQ( JsonObject::Type_Array,   arr[5].GetType());
+        EXPECT_EQ( JsonObject::Type_Array,   arr[5][0].GetType());
+
+        arr = Array(45);
+        EXPECT_TRUE(  arr[0] == 45 );
+
+        arr = Array(Array("hello"));
+        EXPECT_TRUE(  arr[0][0] == "hello" );
+        
+        arr = Array(Array(Array(12.34)));
+        EXPECT_TRUE(  arr[0][0][0] == 12.34 );
+
+}
+#if 0
 TEST(JsonObject, simple){
         using namespace Frontend;
         //JsonObject obj{JsonObject::Tag_Array{}};
@@ -699,7 +887,9 @@ TEST(JsonObject, Frontend_Map){
         obj = Map("one", 1).ToJsonObject();
         std::cout << "obj = " << obj << "\n";
 }
+#endif
 
+#if 0
 TEST(other, kjk){
         debug_maker m;
         auto iter = json_sample_text.begin(), end = json_sample_text.end();
@@ -707,5 +897,5 @@ TEST(other, kjk){
         p.parse();
         auto ret = m.make();
 
-        JsonObject obj(JsonObject::Type_Integer);
 }
+#endif
