@@ -702,8 +702,8 @@ namespace Frontend{
                         JsonObject ToJsonObject()const{
                                 JsonObject obj(JsonObject::Tag_Map{});
                                 for(size_t idx =0;idx < vec_.size();idx += 2 ){
-                                        obj.emplace_unchecked( std::move( vec_[0] ),
-                                                               std::move( vec_[1] ) );
+                                        obj.emplace_unchecked( std::move( vec_[idx+0] ),
+                                                               std::move( vec_[idx+1] ) );
                                 }
                                 return std::move(obj);
                         }
@@ -874,7 +874,7 @@ TEST(JsonObject, FrontendMap){
         EXPECT_TRUE( m["one"] == 1 );
         EXPECT_TRUE( m[2] == "two" );
 }
-#if 0
+
 TEST(JsonObject, simple){
         using namespace Frontend;
         //JsonObject obj{JsonObject::Tag_Array{}};
@@ -889,14 +889,6 @@ TEST(JsonObject, simple){
         std::cout << "obj[3] = " << obj[3] << "\n";
         std::cout << "obj[4] = " << obj[4] << "\n";
 }
-TEST(JsonObject, Frontend_Map){
-        using namespace Frontend;
-        JsonObject obj = Map;
-        std::cout << "obj = " << obj << "\n";
-        obj = Map("one", 1).ToJsonObject();
-        std::cout << "obj = " << obj << "\n";
-}
-#endif
 
 #if 0
 TEST(other, kjk){
