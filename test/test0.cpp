@@ -865,6 +865,15 @@ TEST(JsonObject, FrontendArray){
         EXPECT_TRUE(  arr[0][0][0] == 12.34 );
 
 }
+
+TEST(JsonObject, FrontendMap){
+        using namespace Frontend;
+
+        JsonObject m = Map("one",1)(2, "two");
+        EXPECT_EQ( 2, m.size() );
+        EXPECT_TRUE( m["one"] == 1 );
+        EXPECT_TRUE( m[2] == "two" );
+}
 #if 0
 TEST(JsonObject, simple){
         using namespace Frontend;
