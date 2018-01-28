@@ -4,8 +4,36 @@
 #include "json_parser.h"
 
 #include <boost/type_index.hpp>
+#include <boost/optional.hpp>
 
 using namespace json_parser;
+
+static std::string json_sample_text = R"(
+{
+  "firstName": "John",
+  "lastName": "Smith",
+  "age": 25,
+  "address": {
+    "streetAddress": "21 2nd Street",
+    "city": "New York",
+    "state": "NY",
+    "postalCode": "10021"
+  },
+  "phoneNumber": [
+    {
+      "type": "home",
+      "number": "212 555-1234"
+    },
+    {
+      "type": "fax",
+      "number": "646 555-4567"
+    }
+  ],
+  "gender": {
+    "type": "male"
+  }
+}
+)";
 
 struct Parser : testing::Test{
 protected:
@@ -148,32 +176,6 @@ TEST_F( Parser, try_cast ){
         EXPECT_EQ( 3, try_cast<std::int64_t>( arr[2] ));
 }
 
-static std::string json_sample_text = R"(
-{
-  "firstName": "John",
-  "lastName": "Smith",
-  "age": 25,
-  "address": {
-    "streetAddress": "21 2nd Street",
-    "city": "New York",
-    "state": "NY",
-    "postalCode": "10021"
-  },
-  "phoneNumber": [
-    {
-      "type": "home",
-      "number": "212 555-1234"
-    },
-    {
-      "type": "fax",
-      "number": "646 555-4567"
-    }
-  ],
-  "gender": {
-    "type": "male"
-  }
-}
-)";
 
 #if 0
 TEST_F( Parser, from_wiki ){
@@ -214,17 +216,6 @@ TEST(tokenizer, one){
 
 #endif
 
-struct JsonObject;
-
-namespace std{
-        template<>
-        struct hash<JsonObject>{
-                template<class TypeErased>
-                std::size_t operator()(TypeErased const& obj)const{
-                        return obj.to_string();
-                }
-        };
-} // std
 
 template<unsigned Order>
 struct precedence_device : precedence_device<Order-1>{};
@@ -234,6 +225,7 @@ struct precedence_device<0>{};
 struct JsonObject{
         using array_type = std::vector<JsonObject>;
         using map_type = std::map<JsonObject, JsonObject>;
+
         enum Type{
                 Begin_Primitive,
                         Type_Nil,
@@ -272,24 +264,6 @@ struct JsonObject{
                 }
                 }
         }
-#ifdef NOT_DEFINED
-                switch(type_){
-                case Type_Nil:
-                        break;
-                case Type_Bool:
-                        break;
-                case Type_Integer:
-                        break;
-                case Type_Float:
-                        break;
-                case Type_String:
-                        break;
-                case Type_Array:
-                        break;
-                case Type_Map:
-                        break;
-                }
-        #endif
         /*
                 The point of these are to allow construction of the
                 form
@@ -303,6 +277,92 @@ struct JsonObject{
         using Tag_Array   = std::integral_constant<Type, Type_Array>;
         using Tag_Map     = std::integral_constant<Type, Type_Map>;
 
+        template<bool is_constant>
+        struct basic_iterator{
+                enum IteratorType{
+                        IteratorType_Array,
+                        IteratorType_Map,
+                };
+                using IterTag_Array = std::integral_constant<IteratorType, IteratorType_Array>;
+                using IterTag_Map   = std::integral_constant<IteratorType, IteratorType_Map>;
+                using array_iter_type = std::conditional_t<is_constant,
+                      typename array_type::const_iterator,
+                      typename array_type::iterator
+                >;
+                using map_iter_type = std::conditional_t<is_constant,
+                      typename map_type::const_iterator,
+                      typename map_type::iterator
+                >;
+                using ptr_type = std::conditional_t<
+                        is_constant,
+                        JsonObject const*,
+                        JsonObject *>;
+                using ref_type = std::conditional_t<
+                        is_constant,
+                        JsonObject const&,
+                        JsonObject&>;
+
+                basic_iterator(IterTag_Array, array_iter_type iter){
+                        iter_type_ = IteratorType_Array;
+                        array_iter_ = iter;
+                }
+                basic_iterator(IterTag_Map, map_iter_type iter){
+                        iter_type_ = IteratorType_Map;
+                        map_iter_ = iter;
+                }
+                ~basic_iterator(){
+                        if( iter_type_ == IteratorType_Map )
+                                map_iter_.~map_iter_type();
+                        else 
+                                array_iter_.~array_iter_type();
+                }
+                basic_iterator& operator++(){
+                        if( iter_type_ == IteratorType_Map )
+                                ++map_iter_;
+                        else 
+                                ++array_iter_;
+                        return *this;
+                }
+                bool operator==(basic_iterator const& that)const{
+                        if( this->iter_type_ != that.iter_type_ )
+                                return false;
+                        if( iter_type_ == IteratorType_Map )
+                                return this->map_iter_ == that.map_iter_;
+                        else 
+                                return this->array_iter_ == that.array_iter_;
+                }
+                bool operator!=(basic_iterator const& that)const{
+                        return ! ( *this == that);
+                }
+                ptr_type operator->(){
+                        if( iter_type_ == IteratorType_Map ){
+                                // we have to cast because in std::map you
+                                // can't modify a pointer to a map value,
+                                // but we want to treat maps and array the same,
+                                // so we just cast away and kindly ask people
+                                // to not modify the map values
+                                return const_cast<ptr_type>(&map_iter_->first); // return key
+                        } else  {
+                                return &*array_iter_;
+                        }
+                }
+                ref_type operator*(){
+                        if( iter_type_ == IteratorType_Map ){
+                                return *const_cast<ptr_type>(&map_iter_->first); // return key
+                        } else {
+                                return *array_iter_;
+                        }
+                }
+        private:
+                IteratorType iter_type_;
+                union{
+                        array_iter_type array_iter_;
+                        map_iter_type map_iter_;
+                };
+        };
+
+        using iterator       = basic_iterator<false>;
+        using const_iterator = basic_iterator<true>;
 
         void DoAssign(Tag_Nil){
                 type_ = Type_Nil;
@@ -452,6 +512,17 @@ struct JsonObject{
                 Assign(std::forward<Arg>(arg));
         }
         ~JsonObject(){
+                switch(type_){
+                case Type_String:
+                        as_string_.~std::string();
+                        break;
+                case Type_Array:
+                        as_array_.~array_type();
+                        break;
+                case Type_Map:
+                        as_map_.~map_type();
+                        break;
+                }
         }
         
         template<class Value>
@@ -526,11 +597,42 @@ struct JsonObject{
                 }
         }
         template<class Key>
+        std::enable_if_t< std::is_integral<std::decay_t<Key> >::value, JsonObject const& >
+        operator[](Key key)const{
+                if( type_ ==  Type_Array ){
+                        return as_array_.at(static_cast<typename array_type::size_type>(key));
+                } else if( type_ == Type_Map ){
+                        std::int64_t casted = static_cast<std::int64_t>(key);
+                        JsonObject mapped(casted);
+                        // unlike the non-const version, we don't create keys
+                        // on demand
+                        auto iter = as_map_.find(mapped);
+                        if( iter != as_map_.end() )
+                                return iter->second;
+                        throw std::domain_error("can't find key");
+                } else {
+                        throw std::domain_error("not a map or array");
+                }
+        }
+        template<class Key>
         std::enable_if_t< ! std::is_integral<std::decay_t<Key> >::value, JsonObject& >
         operator[](Key key){
                 if( type_ == Type_Map ){
                         JsonObject tmp{key};
                         return as_map_[tmp];
+                } else {
+                        throw std::domain_error("not a map or array");
+                }
+        }
+        template<class Key>
+        std::enable_if_t< ! std::is_integral<std::decay_t<Key> >::value, JsonObject const& >
+        operator[](Key key)const{
+                if( type_ == Type_Map ){
+                        JsonObject tmp{key};
+                        auto iter = as_map_.find(tmp);
+                        if( iter != as_map_.end() )
+                                return iter->second;
+                        throw std::domain_error("can't find key");
                 } else {
                         throw std::domain_error("not a map or array");
                 }
@@ -664,6 +766,48 @@ struct JsonObject{
                 std::cout << "{type=" << Type_to_string(type_) 
                         << ", <data>=" << to_string() << "}\n";
         }
+
+
+        const_iterator begin()const{
+                switch(type_){
+                case Type_Array:
+                        return const_iterator(const_iterator::IterTag_Array{}, as_array_.begin() );
+                case Type_Map:
+                        return const_iterator(const_iterator::IterTag_Map{}, as_map_.begin() );
+                default:
+                        throw std::domain_error("not a map or array");
+                }
+        }
+        const_iterator end()const{
+                switch(type_){
+                case Type_Array:
+                        return const_iterator(const_iterator::IterTag_Array{}, as_array_.end() );
+                case Type_Map:
+                        return const_iterator(const_iterator::IterTag_Map{}, as_map_.end() );
+                default:
+                        throw std::domain_error("not a map or array");
+                }
+        }
+        iterator begin(){
+                switch(type_){
+                case Type_Array:
+                        return iterator(iterator::IterTag_Array{}, as_array_.begin() );
+                case Type_Map:
+                        return iterator(iterator::IterTag_Map{}, as_map_.begin() );
+                default:
+                        throw std::domain_error("not a map or array");
+                }
+        }
+        iterator end(){
+                switch(type_){
+                case Type_Array:
+                        return iterator(iterator::IterTag_Array{}, as_array_.end() );
+                case Type_Map:
+                        return iterator(iterator::IterTag_Map{}, as_map_.end() );
+                default:
+                        throw std::domain_error("not a map or array");
+                }
+        }
 private:
         Type type_;
         union {
@@ -725,6 +869,91 @@ namespace Frontend{
         MapType Map = {};
 
 } // Frontend
+
+namespace Detail{
+        struct JsonObjectMaker{
+
+                struct StackFrame{
+                        JsonObject object;
+                        // only for when we have a map, get need to save the key first
+                        std::vector<JsonObject> param_stack_;
+                };
+
+
+                void begin_map(){
+                        StackFrame frame;
+                        frame.object = JsonObject{JsonObject::Tag_Map{}};
+                        stack_.emplace_back(std::move(frame));
+                } 
+                void end_map(){
+                        end_any_();
+                }
+                void begin_array(){
+                        StackFrame frame;
+                        frame.object = JsonObject{JsonObject::Tag_Array{}};
+                        stack_.emplace_back(std::move(frame));
+                } 
+                void end_array(){
+                        end_any_();
+                } 
+                void make_string(std::string const& value){
+                        add_any_( JsonObject{value});
+                }
+                void make_int(std::int64_t value){
+                        add_any_( JsonObject{value});
+                }
+                void make_float(long double value){
+                        add_any_( JsonObject{value});
+                }
+                void make_null(){
+                        add_any_( JsonObject{JsonObject::Tag_Nil{}});
+                }
+                void make_true(){
+                        add_any_( JsonObject{true} );
+                }
+                void make_false(){
+                        add_any_( JsonObject{false} );
+                }
+                JsonObject make(){ 
+                        JsonObject tmp = std::move(out_.back());
+                        out_.pop_back();
+                        return std::move(tmp);
+                } 
+        private:
+                void add_any_(JsonObject&& obj){
+                        if( stack_.back().object.GetType() == JsonObject::Type_Array ){
+                                stack_.back().object.push_back_unchecked( obj );
+                        } else if( stack_.back().object.GetType() == JsonObject::Type_Map ){
+                                if( stack_.back().param_stack_.empty() ){
+                                        // this must be the key, save it because we 
+                                        // need to add key/value pair atomically
+                                        stack_.back().param_stack_.push_back(obj);
+                                } else{
+                                        stack_.back().object.emplace_unchecked( 
+                                                std::move( stack_.back().param_stack_.back()),
+                                                std::move( obj ) );
+                                        stack_.back().param_stack_.pop_back();
+                                }
+                        } else{
+                                throw std::domain_error("unexpcted");
+                        }
+                }
+                void end_any_(){
+                        if( stack_.back().param_stack_.size() != 0 )
+                                throw std::domain_error("not an even number of args");
+                        auto last = std::move(stack_.back());
+                        stack_.pop_back();
+                        if( stack_.empty() ){
+                                out_.push_back(std::move(last.object));
+                                return;
+                        }
+
+                        add_any_( std::move( last.object) );
+                } 
+                std::vector<StackFrame> stack_;
+                std::vector<JsonObject> out_;
+        };
+}
 
 struct debug_maker{
         debug_maker(){
@@ -890,13 +1119,40 @@ TEST(JsonObject, simple){
         std::cout << "obj[4] = " << obj[4] << "\n";
 }
 
-#if 0
+TEST(JsonObject, foreach){
+        using namespace Frontend;
+        auto obj = Array(1, "two", 3.333, Array(1,2,3), Map("a", "A")("b", 35.555));
+        for( auto const& _ : obj){
+                switch(_.GetType()){
+                case JsonObject::Type_Array:
+                        for( JsonObject::const_iterator iter(_.begin()),end(_.end());iter!=end;++iter){
+                                std::cout << "-" << *iter << "\n";
+                        }
+                        break;
+                case JsonObject::Type_Map:
+                        for( JsonObject::const_iterator iter(_.begin()),end(_.end());iter!=end;++iter){
+                                std::cout << "-" << *iter << "=>" << _[*iter] << "\n";
+                        }
+                        break;
+                default:
+                        break;
+                }
+                std::cout << _ << "\n";
+        }
+}
+TEST(JsonObject, maker){
+        Detail::JsonObjectMaker m;
+        auto iter = json_sample_text.begin(), end = json_sample_text.end();
+        detail::basic_parser<Detail::JsonObjectMaker,decltype(iter)> p(m,iter, end);
+        p.parse();
+        auto ret = m.make();
+        std::cout << ret << "\n";
+}
+
 TEST(other, kjk){
         debug_maker m;
         auto iter = json_sample_text.begin(), end = json_sample_text.end();
         detail::basic_parser<debug_maker,decltype(iter)> p(m,iter, end);
         p.parse();
         auto ret = m.make();
-
 }
-#endif
