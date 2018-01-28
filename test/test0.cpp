@@ -512,9 +512,10 @@ struct JsonObject{
                 Assign(std::forward<Arg>(arg));
         }
         ~JsonObject(){
+                using std::string;
                 switch(type_){
                 case Type_String:
-                        as_string_.~std::string();
+                        as_string_.~string();
                         break;
                 case Type_Array:
                         as_array_.~array_type();
@@ -705,7 +706,158 @@ struct JsonObject{
         bool operator!=(JsonObject const& that)const{
                 return ! ( *this == that);
         }
+        struct visitor{
+                // way to communitate weather to
+                // go into every sub or not
+                enum VisitorCtrl{
+                        VisitorCtrl_Skip,
+                        VisitorCtrl_Decend,
+                };
+                virtual void on_nil(){}
+                virtual void on_bool(bool value){}
+                virtual void on_integer(std::int64_t value){}
+                virtual void on_float(double value){}
+                virtual void on_string(std::string const& value){}
+                virtual VisitorCtrl begin_array(size_t n){ return VisitorCtrl_Decend; }
+                virtual void end_array(){ }
+                virtual VisitorCtrl begin_map(size_t n){ return VisitorCtrl_Decend; }
+                virtual void end_map(){ }
+        };
+        struct debug_visitor : visitor{
+                void on_nil()override{
+                        std::cout << make_indent_() << "on_nil()\n";
+                }
+                void on_bool(bool value)override{
+                        std::cout << make_indent_() << "on_bool(" << value << ")\n";
+                }
+                void on_integer(std::int64_t value)override{
+                        std::cout << make_indent_() << "on_integer(" << value << ")\n";
+                }
+                void on_float(double value)override{
+                        std::cout << make_indent_() << "on_float(" << value << ")\n";
+                }
+                void on_string(std::string const& value)override{
+                        std::cout << make_indent_() << "on_string(" << value << ")\n";
+                }
+                VisitorCtrl begin_array(size_t n)override{
+                        std::cout << make_indent_() << "begin_array(" << n << ")\n";
+                        return VisitorCtrl_Decend;
+                }
+                void end_array()override{
+                        --indent_;
+                        std::cout << make_indent_() << "end_array()\n";
+                }
+                VisitorCtrl begin_map(size_t n)override{
+                        std::cout << make_indent_() << "begin_map(" << n << ")\n";
+                        ++indent_;
+                        return VisitorCtrl_Decend;
+                }
+                void end_map()override{
+                        --indent_;
+                        std::cout << make_indent_() << "end_map()\n";
+                }
+        private:
+                std::string make_indent_()const{
+                        return std::string(indent_*4,' ');
+                }
+                unsigned indent_{0};
+        };
+        void Accept(visitor& v)const{
+
+                switch(this->GetType()){
+                case Type_Nil:
+                        v.on_nil();
+                        break;
+                case Type_Bool:
+                        v.on_bool(as_bool_);
+                        break;
+                case Type_Integer:
+                        v.on_integer(as_int_);
+                        break;
+                case Type_Float:
+                        v.on_float(as_float_);
+                        break;
+                case Type_String:
+                        v.on_string(as_string_);
+                        break;
+                
+                case Type_Array:
+                        if( v.begin_array( this->size() ) == visitor::VisitorCtrl_Skip )
+                                return;
+                        break;
+                case Type_Map:
+                        if( v.begin_map( this->size() ) == visitor::VisitorCtrl_Skip )
+                                return;
+                        break;
+                }
+
+                struct StackFrame{
+                        Type type_;
+                        const_iterator iter, end;
+                };
+                StackFrame start = { this->GetType(), this->begin(), this->end()  };
+                std::vector< StackFrame> stack{std::move(start)};
+                for(; stack.size(); ){
+                        for(; stack.back().iter != stack.back().end;){
+
+                                enum Op{ Op_Next, Op_Decend};
+                                Op op = Op_Next;
+
+                                auto& iter = stack.back().iter;
+                                switch(iter->GetType()){
+                                case Type_Nil:
+                                        v.on_nil();
+                                        break;
+                                case Type_Bool:
+                                        v.on_bool(as_bool_);
+                                        break;
+                                case Type_Integer:
+                                        v.on_integer(as_int_);
+                                        break;
+                                case Type_Float:
+                                        v.on_float(as_float_);
+                                        break;
+                                case Type_String:
+                                        v.on_string(as_string_);
+                                        break;
+                                case Type_Array:
+                                        if( v.begin_array( iter->size() ) == visitor::VisitorCtrl_Decend ){
+                                                op = Op_Decend;
+                                        }
+                                        break;
+                                case Type_Map:
+                                        if( v.begin_map( iter->size() ) == visitor::VisitorCtrl_Decend ){
+                                                op = Op_Decend;
+                                        }
+                                        break;
+                                }
+
+                                switch(op){
+                                case Op_Next:
+                                        ++iter;
+                                        break;
+                                case Op_Decend:
+                                        {
+                                                StackFrame start = { Type_Array, iter->begin(), iter->end()  };
+                                                stack.push_back( std::move(start) );
+                                        }
+                                        break;
+                                // we could have Op_Exit, Op_Acend etc
+                                }
+                        }
+
+                        // now we need to pop the start, and increment
+                        // the iterator for every stack, and then apply
+                        // recursivly
+                        for(;stack.size() && stack.back().iter == stack.back().end;){
+                                stack.pop_back();
+                                assert( stack.back().iter != stack.back().end && "unexpcted");
+                                ++stack.back().iter;
+                        }
+                }
+        }
         void Display(std::ostream& ostr, unsigned indent = 0)const{
+                #if 0
                 auto print_indent = [&](){
                         ostr << std::string(indent*4,' ');
                 };
@@ -757,6 +909,9 @@ struct JsonObject{
                         ostr << "}";
                         break;
                 }
+                #endif
+                debug_visitor v;
+                this->Accept(v);
         }
         friend std::ostream& operator<<(std::ostream& ostr, JsonObject const& self){
                 self.Display(ostr);
