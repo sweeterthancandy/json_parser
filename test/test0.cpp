@@ -228,19 +228,19 @@ struct JsonObject{
 
         enum Type{
                 Begin_Primitive,
-                        Type_Nil,
+                        Type_Nil = Begin_Primitive,
                         Type_Bool,
                         Type_Integer,
                         Type_Float,
                         Type_String,
                 End_Primitive,
-                Type_Array,
-                Type_Map,
+                Begin_Aggregate,
+                        Type_Array = Begin_Aggregate,
+                        Type_Map,
+                End_Aggregate,
         };
         static std::string Type_to_string(Type e) {
                 switch (e) {
-                case Begin_Primitive:
-                        return "Begin_Primitive";
                 case Type_Nil:
                         return "Type_Nil";
                 case Type_Bool:
@@ -251,8 +251,6 @@ struct JsonObject{
                         return "Type_Float";
                 case Type_String:
                         return "Type_String";
-                case End_Primitive:
-                        return "End_Primitive";
                 case Type_Array:
                         return "Type_Array";
                 case Type_Map:
@@ -706,13 +704,14 @@ struct JsonObject{
         bool operator!=(JsonObject const& that)const{
                 return ! ( *this == that);
         }
+        // way to communitate weather to
+        // go into every sub or not
+        enum VisitorCtrl{
+                VisitorCtrl_Skip,
+                VisitorCtrl_Decend,
+                VisitorCtrl_Nop,
+        };
         struct visitor{
-                // way to communitate weather to
-                // go into every sub or not
-                enum VisitorCtrl{
-                        VisitorCtrl_Skip,
-                        VisitorCtrl_Decend,
-                };
                 virtual void on_nil(){}
                 virtual void on_bool(bool value){}
                 virtual void on_integer(std::int64_t value){}
@@ -722,6 +721,15 @@ struct JsonObject{
                 virtual void end_array(){ }
                 virtual VisitorCtrl begin_map(size_t n){ return VisitorCtrl_Decend; }
                 virtual void end_map(){ }
+        };
+        struct pretty_visitor{
+                enum Options{
+                        Option_QuoteString = 1,
+                        Option_Newlines = 2,
+                };
+                explicit to_string_visitor(std::ostream* ostr):ostr_{ostr}{}
+        private:
+                std::ostream* ostr_;
         };
         struct debug_visitor : visitor{
                 void on_nil()override{
@@ -741,6 +749,7 @@ struct JsonObject{
                 }
                 VisitorCtrl begin_array(size_t n)override{
                         std::cout << make_indent_() << "begin_array(" << n << ")\n";
+                        ++indent_;
                         return VisitorCtrl_Decend;
                 }
                 void end_array()override{
@@ -762,37 +771,55 @@ struct JsonObject{
                 }
                 unsigned indent_{0};
         };
-        void Accept(visitor& v)const{
-
+        bool IsPrimitive()const{ 
+                return Begin_Primitive <= GetType() && 
+                        GetType() < End_Primitive;
+        }
+        bool IsAggregate()const{ 
+                return Begin_Aggregate <= GetType() && 
+                        GetType() < End_Aggregate;
+        }
+        VisitorCtrl AcceptNonRecursive(visitor& v)const{
                 switch(this->GetType()){
                 case Type_Nil:
                         v.on_nil();
-                        break;
+                        return VisitorCtrl_Nop;
                 case Type_Bool:
                         v.on_bool(as_bool_);
-                        break;
+                        return VisitorCtrl_Nop;
                 case Type_Integer:
                         v.on_integer(as_int_);
-                        break;
+                        return VisitorCtrl_Nop;
                 case Type_Float:
                         v.on_float(as_float_);
-                        break;
+                        return VisitorCtrl_Nop;
                 case Type_String:
                         v.on_string(as_string_);
-                        break;
-                
+                        return VisitorCtrl_Nop;
                 case Type_Array:
-                        if( v.begin_array( this->size() ) == visitor::VisitorCtrl_Skip )
-                                return;
-                        break;
+                        return v.begin_array( this->size() );
                 case Type_Map:
-                        if( v.begin_map( this->size() ) == visitor::VisitorCtrl_Skip )
-                                return;
+                        return v.begin_map( this->size() );
+                default:
+                        __builtin_unreachable();
+                }
+        }
+
+        void Accept(visitor& v)const{
+
+                auto ctrl = AcceptNonRecursive(v);
+
+                switch(ctrl){
+                case VisitorCtrl_Nop:
+                case VisitorCtrl_Skip:
+                        return;
+                case VisitorCtrl_Decend:
                         break;
                 }
 
+
                 struct StackFrame{
-                        Type type_;
+                        Type type;
                         const_iterator iter, end;
                 };
                 StackFrame start = { this->GetType(), this->begin(), this->end()  };
@@ -800,49 +827,43 @@ struct JsonObject{
                 for(; stack.size(); ){
                         for(; stack.back().iter != stack.back().end;){
 
-                                enum Op{ Op_Next, Op_Decend};
-                                Op op = Op_Next;
-
                                 auto& iter = stack.back().iter;
-                                switch(iter->GetType()){
-                                case Type_Nil:
-                                        v.on_nil();
-                                        break;
-                                case Type_Bool:
-                                        v.on_bool(as_bool_);
-                                        break;
-                                case Type_Integer:
-                                        v.on_integer(as_int_);
-                                        break;
-                                case Type_Float:
-                                        v.on_float(as_float_);
-                                        break;
-                                case Type_String:
-                                        v.on_string(as_string_);
-                                        break;
-                                case Type_Array:
-                                        if( v.begin_array( iter->size() ) == visitor::VisitorCtrl_Decend ){
-                                                op = Op_Decend;
+
+                                auto next_ctrl = iter->AcceptNonRecursive(v);
+
+                                // in the case of a map, we need to first
+                                // process the key, now we need to do
+                                // the value
+                                JsonObject const* mapValue = 0;
+                                if( stack.back().type == Type_Map ){
+                                        if( stack.size() == 1 ){
+                                                // now this is a special case, because when treating
+                                                // recursive objects we need to reference an iterator
+                                                // for the map, except on the first iteration, as we
+                                                // don't have an iterator to this, so just put in 
+                                                // an 'if' statement here
+                                                mapValue = &this->operator[](*iter);
+                                        } else{
+                                                mapValue = &stack[stack.size()-2].iter->operator[](*iter);
                                         }
-                                        break;
-                                case Type_Map:
-                                        if( v.begin_map( iter->size() ) == visitor::VisitorCtrl_Decend ){
-                                                op = Op_Decend;
-                                        }
-                                        break;
+                                        next_ctrl = mapValue->AcceptNonRecursive(v);
                                 }
 
-                                switch(op){
-                                case Op_Next:
+                                switch(next_ctrl){
+                                case VisitorCtrl_Nop:
+                                case VisitorCtrl_Skip:
                                         ++iter;
                                         break;
-                                case Op_Decend:
-                                        {
+                                // note that we we decend, we don't increment stack.back().iter,
+                                // this is why we recursivly pop at the end
+                                case VisitorCtrl_Decend:
+                                        if( mapValue ){
+                                                StackFrame start = { Type_Array, mapValue->begin(), mapValue->end()  };
+                                                stack.push_back( std::move(start) );
+                                        } else{
                                                 StackFrame start = { Type_Array, iter->begin(), iter->end()  };
                                                 stack.push_back( std::move(start) );
                                         }
-                                        break;
-                                // we could have Op_Exit, Op_Acend etc
                                 }
                         }
 
@@ -850,6 +871,10 @@ struct JsonObject{
                         // the iterator for every stack, and then apply
                         // recursivly
                         for(;stack.size() && stack.back().iter == stack.back().end;){
+                                if( stack.back().type == Type_Array )
+                                        v.end_array();
+                                else
+                                        v.end_map();
                                 stack.pop_back();
                                 assert( stack.back().iter != stack.back().end && "unexpcted");
                                 ++stack.back().iter;
@@ -1191,8 +1216,8 @@ TEST(JsonObject, Array){
         EXPECT_EQ( 3, arr.size());
         EXPECT_TRUE( arr[0] == 1 );
         EXPECT_TRUE( arr[0] != "Hello");
-        EXPECT_ANY_THROW( arr[4] );
-        EXPECT_ANY_THROW( arr["hello"]);
+        //EXPECT_ANY_THROW( arr[4] );
+        //EXPECT_ANY_THROW( arr["hello"]);
         arr = JsonObject{JsonObject::Tag_Array{}};
         EXPECT_EQ( 0, arr.size());
         arr.push_back(23.34);
@@ -1212,7 +1237,7 @@ TEST(JsonObject, Map){
         EXPECT_TRUE( m["two"] == 3 );
         m["two"] = m["one"];
         m = 1;
-        EXPECT_ANY_THROW( m.size() );
+        //EXPECT_ANY_THROW( m.size() );
         m = JsonObject{JsonObject::Tag_Map{}};
         EXPECT_EQ( 0, m.size());
 }
@@ -1304,6 +1329,7 @@ TEST(JsonObject, maker){
         std::cout << ret << "\n";
 }
 
+#if 0
 TEST(other, kjk){
         debug_maker m;
         auto iter = json_sample_text.begin(), end = json_sample_text.end();
@@ -1311,3 +1337,4 @@ TEST(other, kjk){
         p.parse();
         auto ret = m.make();
 }
+#endif
