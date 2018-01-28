@@ -1195,6 +1195,11 @@ struct JsonObject::graph_visitor : visitor{
         graph_visitor(){
                 stack_.push_back(new GVStackFrame);
         }
+        ~graph_visitor(){
+                for( auto& ptr : stack_ ){
+                        delete ptr;
+                }
+        }
 
         graph_visitor(graph_visitor const&)=delete;
         graph_visitor(graph_visitor&&)=delete;
