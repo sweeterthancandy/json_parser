@@ -48,6 +48,9 @@ struct JsonObject{
                 }
                 }
         }
+        friend inline std::ostream& operator<<(std::ostream& ostr, Type e){
+                return ostr << Type_to_string(e);
+        }
         /*
                 The point of these are to allow construction of the
                 form

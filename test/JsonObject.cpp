@@ -245,6 +245,10 @@ TEST(other, kjk){
         EXPECT_ANY_THROW(  obj["address"]["city"].AsInteger());
         EXPECT_EQ( 10021 , obj["address"]["postalCode"].AsInteger());
 
+        for(auto _ : obj ){
+                std::cout << _.GetType() << "\n";
+        }
+
         obj.Parse("[1,2,3]");
         EXPECT_EQ( 3, obj.size());
         int sum = 0;
@@ -254,7 +258,6 @@ TEST(other, kjk){
         EXPECT_EQ(6, sum);
         sum = obj[0].AsInteger() + obj[1].AsInteger() + obj[2].AsInteger();
         EXPECT_EQ(6, sum);
-
 }
 
 

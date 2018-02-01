@@ -32,9 +32,7 @@ static std::string json_sample_text = R"(
   ],
   "gender": {
     "type": "male"
-  },
-  "dummy":{},
-  "one_to_ten":[1,2,3,4,5,6,7,8,9,10]
+  }
 }
 )";
 
@@ -134,10 +132,9 @@ protected:
         };
 };
 
-#if 0
 TEST_F( Parser, valid_strings){
         for( auto const& str : valid_strings ){
-                EXPECT_TRUE( !!try_parse(str) );
+                EXPECT_TRUE( !!try_parse(str) ) << str;
                 EXPECT_NO_THROW( parse(str) );
         }
 }
@@ -157,7 +154,6 @@ TEST_F( Parser, invalid_strings){
                 EXPECT_ANY_THROW( parse(str) );
         }
 }
-#if 0
 TEST_F( Parser, to_string ){
         for( auto const& str : valid_strings ){
                 auto s = to_string( parse(str) );
@@ -169,7 +165,6 @@ TEST_F( Parser, display ){
                 display( parse(str) );
         }
 }
-#endif
 
 TEST_F( Parser, try_cast ){
         auto root = parse("[1,2,3]");
@@ -181,44 +176,8 @@ TEST_F( Parser, try_cast ){
 }
 
 
-#if 0
 TEST_F( Parser, from_wiki ){
         auto root = parse(json_sample_text);
         display(root);
 }
-#endif
-
-TEST(tokenizer, _){
-        tokenizer tok(json_sample_text);
-        for(auto iter=tok.token_begin(), end=tok.token_end();iter!=end;++iter){
-        }
-
-}
-TEST(tokenizer, hello_world){
-        tokenizer tok("hello world");
-        unsigned n = 0;
-        auto iter=tok.token_begin(), end=tok.token_end();
-        EXPECT_NE( iter, end);
-        EXPECT_EQ(token_type::string_,  iter->type());
-        ++iter;
-        EXPECT_EQ(token_type::string_,  iter->type());
-        ++iter;
-        EXPECT_EQ( iter, end);
-}
-
-TEST(tokenizer, eos){
-        EXPECT_TRUE(tokenizer("").eos());
-        EXPECT_TRUE(tokenizer("   ").eos());
-        EXPECT_FALSE(tokenizer("and").eos());
-}
-TEST(tokenizer, one){
-        tokenizer tok("  1");
-        EXPECT_FALSE(tok.eos());
-        tok.next();
-        EXPECT_TRUE(tok.eos());
-}
-
-#endif
-
-
 
