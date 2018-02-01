@@ -1,5 +1,8 @@
 #include "json_parser.h"
 
+#include <list>
+#include <iterator>
+
 namespace json_parser{
 
 namespace Detail{
@@ -56,6 +59,7 @@ enum VisitorCtrl{
         VisitorCtrl_Nop,
 };
 
+
 struct JsonObject{
         using array_type = std::vector<JsonObject>;
         using map_type = std::map<JsonObject, JsonObject>;
@@ -73,12 +77,12 @@ struct JsonObject{
         using Tag_Array   = std::integral_constant<Type, Type_Array>;
         using Tag_Map     = std::integral_constant<Type, Type_Map>;
 
+        enum IteratorType{
+                IteratorType_Array,
+                IteratorType_Map,
+        };
         template<bool is_constant>
-        struct basic_iterator{
-                enum IteratorType{
-                        IteratorType_Array,
-                        IteratorType_Map,
-                };
+        struct basic_iterator : std::iterator<std::forward_iterator_tag, JsonObject>{
                 using IterTag_Array = std::integral_constant<IteratorType, IteratorType_Array>;
                 using IterTag_Map   = std::integral_constant<IteratorType, IteratorType_Map>;
                 using array_iter_type = std::conditional_t<is_constant,
@@ -97,6 +101,19 @@ struct JsonObject{
                         is_constant,
                         JsonObject const&,
                         JsonObject&>;
+
+                friend struct basic_iterator<true>;
+
+                template<class Iter>
+                basic_iterator(Iter const& that)
+                        :iter_type_(that.iter_type_)
+                {
+                        if( iter_type_ == IteratorType_Map ){
+                                map_iter_ = that.map_iter_;
+                        } else {
+                                array_iter_ = that.array_iter_;
+                        }
+                }
 
                 basic_iterator(IterTag_Array, array_iter_type iter){
                         iter_type_ = IteratorType_Array;
@@ -143,17 +160,23 @@ struct JsonObject{
                         }
                 }
                 ref_type operator*(){
-                        if( iter_type_ == IteratorType_Map ){
-                                return *const_cast<ptr_type>(&map_iter_->first); // return key
-                        } else {
-                                return *array_iter_;
-                        }
+                        return key();
                 }
                 ptr_type map_value__(){
                         if( iter_type_ == IteratorType_Map ){
                                 return &map_iter_->second;
                         } else {
                                 return &*array_iter_;
+                        }
+                }
+                ref_type value(){
+                        return *map_value__();
+                }
+                ref_type key(){
+                        if( iter_type_ == IteratorType_Map ){
+                                return *const_cast<ptr_type>(&map_iter_->first); // return key
+                        } else {
+                                return *array_iter_;
                         }
                 }
         private:
@@ -209,6 +232,7 @@ struct JsonObject{
                 new (&as_map_) map_type{std::forward<MapTypeParam>(val)};
         }
 
+        #if 0
         template<class Value>
         void AssignImpl( Detail::precedence_device<0>, Value&& val)
         {
@@ -216,6 +240,7 @@ struct JsonObject{
                 std::cout << "val = " << boost::typeindex::type_id_with_cvr< std::remove_cv_t<std::decay_t<Value> > >() << "\n";
                 throw std::domain_error("not a known type");
         }
+        #endif
         template<class Value>
         std::enable_if_t< std::is_same<std::decay_t<Value>, Tag_Array >::value > 
         AssignImpl( Detail::precedence_device<3>, Value&& val){
@@ -253,14 +278,24 @@ struct JsonObject{
                 DoAssign( Tag_Integer{}, std::forward<Value>(val) );
         }
         template<class Value>
+        std::enable_if_t< std::is_same<typename std::decay_t<Value>::IAmAnEmptyArray, int>::value >
+        AssignImpl( Detail::precedence_device<13>, Value&& val){
+                DoAssign( Tag_Array{} );
+        }
+        template<class Value>
+        std::enable_if_t< std::is_same<typename std::decay_t<Value>::IAmAnEmptyMap, int>::value >
+        AssignImpl( Detail::precedence_device<14>, Value&& val){
+                DoAssign( Tag_Map{} );
+        }
+        template<class Value>
         std::enable_if_t< std::is_same<std::decay_t<Value>, bool>::value >
-        AssignImpl( Detail::precedence_device<10>, Value&& val){
+        AssignImpl( Detail::precedence_device<15>, Value&& val){
                 DoAssign( Tag_Bool{}, std::forward<Value>(val));
         }
         template<class Value>
         std::enable_if_t< ! std::is_same<JsonObject, std::remove_cv_t<std::decay_t<Value> > >::value >
         Assign(Value&& val){
-                AssignImpl( Detail::precedence_device<10>{}, std::forward<Value>(val) );
+                AssignImpl( Detail::precedence_device<15>{}, std::forward<Value>(val) );
         }
         template<class Value>
         std::enable_if_t< std::is_same<JsonObject, std::remove_cv_t<std::decay_t<Value> > >::value >
@@ -1328,6 +1363,8 @@ void JsonObject::Display(std::ostream& ostr, unsigned indent)const{
         this->Accept(v);
         v.Optmize();
         v.Render(ctx);
+        ostr << "\n";
+        ostr.flush();
 }
 std::string JsonObject::ToString()const{
         std::stringstream sstr;
@@ -1347,6 +1384,7 @@ namespace Detail{
                         int aux[] = {0, ( obj.push_back_unchecked( args), 0 )... };
                         return obj;
                 }
+                using IAmAnEmptyArray = int;
         };
         struct MapType{
                 struct Impl{
@@ -1382,6 +1420,7 @@ namespace Detail{
                         JsonObject obj(JsonObject::Tag_Map{});
                         return obj;
                 }
+                using IAmAnEmptyMap = int;
         };
 } // Defailt
 
@@ -1425,7 +1464,7 @@ namespace Detail{
                         add_any_( JsonObject{value});
                 }
                 void make_null(){
-                        add_any_( JsonObject{JsonObject::Tag_Nil{}});
+                        //add_any_( JsonObject{JsonObject::Tag_Nil{}});
                 }
                 void make_true(){
                         add_any_( JsonObject{true} );

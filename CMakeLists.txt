@@ -21,6 +21,8 @@ find_package(GTest REQUIRED)
 include_directories(json_parser)
 
 add_executable( json_parser_tests ${test_sources} )
-
 target_link_libraries(json_parser_tests GTest::GTest GTest::Main)
+
+add_executable( example example.cpp )
+target_link_libraries(example)
 
