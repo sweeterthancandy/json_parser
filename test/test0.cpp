@@ -353,6 +353,13 @@ struct JsonObject{
                                 return *array_iter_;
                         }
                 }
+                ptr_type map_value__(){
+                        if( iter_type_ == IteratorType_Map ){
+                                return &map_iter_->second;
+                        } else {
+                                return &*array_iter_;
+                        }
+                }
         private:
                 IteratorType iter_type_;
                 union{
@@ -881,8 +888,10 @@ struct JsonObject{
                 struct StackFrame{
                         Type type;
                         const_iterator iter, end;
+                        JsonObject const* map_obj_;
                 };
-                StackFrame start = { this->GetType(), this->begin(), this->end()  };
+
+                StackFrame start = { this->GetType(), this->begin(), this->end(), this};
                 std::vector< StackFrame> stack{std::move(start)};
                 for(; stack.size(); ){
                         for(; stack.back().iter != stack.back().end;){
@@ -896,16 +905,7 @@ struct JsonObject{
                                 // the value
                                 JsonObject const* mapValue = 0;
                                 if( stack.back().type == Type_Map ){
-                                        if( stack.size() == 1 ){
-                                                // now this is a special case, because when treating
-                                                // recursive objects we need to reference an iterator
-                                                // for the map, except on the first iteration, as we
-                                                // don't have an iterator to this, so just put in 
-                                                // an 'if' statement here
-                                                mapValue = &this->operator[](*iter);
-                                        } else{
-                                                mapValue = &stack[stack.size()-2].iter->operator[](*iter);
-                                        }
+                                        mapValue = iter.map_value__();
                                         next_ctrl = mapValue->AcceptNonRecursive(v);
                                 }
 
@@ -918,10 +918,10 @@ struct JsonObject{
                                 // this is why we recursivly pop at the end
                                 case VisitorCtrl_Decend:
                                         if( mapValue ){
-                                                StackFrame start = { Type_Array, mapValue->begin(), mapValue->end()  };
+                                                StackFrame start = { mapValue->GetType(), mapValue->begin(), mapValue->end(), mapValue };
                                                 stack.push_back( std::move(start) );
                                         } else{
-                                                StackFrame start = { Type_Array, iter->begin(), iter->end()  };
+                                                StackFrame start = { iter->GetType(), iter->begin(), iter->end(), &*iter };
                                                 stack.push_back( std::move(start) );
                                         }
                                 }
@@ -936,6 +936,11 @@ struct JsonObject{
                                 else
                                         v.end_map();
                                 stack.pop_back();
+
+                                // if the stack isn't empty, we need to increment the next one
+                                if( stack.empty() )
+                                        break;
+                                assert( stack.size() && "expected");
                                 assert( stack.back().iter != stack.back().end && "unexpcted");
                                 ++stack.back().iter;
                         }
@@ -1016,9 +1021,6 @@ private:
                 }
  */
 namespace Detail{
-}
-struct JsonObject::graph_visitor : visitor{
-
         /*
                 Yes we're creating a direct graph
                 to pritn a json object. The idea is 
@@ -1066,6 +1068,9 @@ struct JsonObject::graph_visitor : visitor{
 
                          */
                         NodeType_Vector,
+
+                        NodeType_Indent,
+                        NodeType_NewLine,
                 };
                 explicit Node(NodeType type):type_{type}{}
                 virtual ~Node()=default;
@@ -1103,8 +1108,42 @@ struct JsonObject::graph_visitor : visitor{
         private:
                 std::string str_;
         };
+        
+        struct Indent : Node{
+                explicit Indent(unsigned n):
+                        Node{NodeType_Indent},
+                        n_{n}
+                {}
+                size_t Width()const override{
+                        return n_ * 4;
+                }
+                void Render(std::ostream& ostr)const override{
+                        if( n_ == 0 ) return;
+                        ostr << std::string(n_ * 4, ' ');
+                }
+                std::string DebugString()const override{
+                        std::stringstream sstr;
+                        sstr << "Indent<" << n_ << ">";
+                        return sstr.str();
+                }
+        private:
+                unsigned n_;
+        };
+        struct NewLine : Node{
+                NewLine():Node{NodeType_NewLine}{}
+                size_t Width()const override{
+                        return 0;
+                }
+                void Render(std::ostream& ostr)const override{
+                        ostr << "\n";
+                }
+                std::string DebugString()const override{
+                        return "NewLine";
+                }
+        };
+
         struct Vector : Node{
-                using container_type = std::vector<std::shared_ptr<Node> >;
+                using container_type = std::vector<Node*>;
                 using const_iterator = container_type::const_iterator;
 
                 explicit Vector():
@@ -1119,8 +1158,7 @@ struct JsonObject::graph_visitor : visitor{
                 Vector& operator=(Vector const&)=delete;
                 Vector& operator=(Vector&&)=delete;
 
-                void push(std::shared_ptr<Node> ptr){ 
-                        std::cerr << "push<" << this << ", " << ptr.get() << ">\n";
+                void push(Node* ptr){ 
                         vec_.push_back(ptr);
                 }
                 auto begin()const{ return vec_.begin(); }
@@ -1159,9 +1197,9 @@ struct JsonObject::graph_visitor : visitor{
         // but optional as in call Optional::Render() or
         // not without effecting correcness, only prettyness
         struct Optional : Node{
-                explicit Optional(std::shared_ptr<Node> ptr):
+                explicit Optional(Node* ptr):
                         Node{NodeType_Optional},
-                        ptr_{std::move(ptr)}
+                        ptr_{ptr}
                 {}
                 size_t Width()const override{
                         return ptr_->Width();
@@ -1175,11 +1213,11 @@ struct JsonObject::graph_visitor : visitor{
                         return sstr.str();
                 }
         private:
-                std::shared_ptr<Node> ptr_;
+                Node* ptr_;
         };
 
         struct GVStackFrame{
-                explicit GVStackFrame(Type t = Type_NotAType)
+                explicit GVStackFrame(JsonObject::Type t = JsonObject::Type_NotAType)
                         :type{t}
                         ,vector{ new Vector }
                 {}
@@ -1187,13 +1225,16 @@ struct JsonObject::graph_visitor : visitor{
                 GVStackFrame(GVStackFrame&&)=delete;
                 GVStackFrame& operator=(GVStackFrame const&)=delete;
                 GVStackFrame& operator=(GVStackFrame&&)=delete;
-                Type type;
-                std::shared_ptr<Node> vector;
+                JsonObject::Type type;
+                Vector* vector;
                 size_t index{0};
         };
+}
+struct JsonObject::graph_visitor : visitor{
+
 
         graph_visitor(){
-                stack_.push_back(new GVStackFrame);
+                stack_.push_back(new Detail::GVStackFrame);
         }
         ~graph_visitor(){
                 for( auto& ptr : stack_ ){
@@ -1237,13 +1278,11 @@ struct JsonObject::graph_visitor : visitor{
                 do_end_(Type_Map);
         }
         void Render(std::ostream& ostr)const{
-                std::cout << "Doing it\n";
-                Debug();
                 stack_.back()->vector->Render(ostr);
         }
         void Debug()const{
                 for(auto& s : stack_ ){
-                        //std::cout << s.vector->DebugString() << "\n";
+                        std::cout << s->vector->DebugString() << "\n";
                 }
         }
 private:
@@ -1252,93 +1291,39 @@ private:
                         if( stack_.back()->index % 2 == 0 )
                                 str += ":";
                 }
-                #if 0
                 std::string indent;
                 if( stack_.size() )
                         indent = std::string(stack_.size()*4, ' ');
                 std::string whitespace = "\n" + indent;
-                stack_.back()->vector->push( std::make_shared<Optional>(std::make_shared<Text>(whitespace)) );
+                stack_.back()->vector->push( new Detail::Optional{new Detail::Text{whitespace}});
                 if( stack_.back()->index ){
-                        stack_.back()->vector->push( std::make_shared<Text>(", ") );
+                        stack_.back()->vector->push( new Detail::Text(", ") );
                 }
-                #endif
-                auto text = std::shared_ptr<Node>(new Text{std::move(str)});
-                reinterpret_cast<Vector*>(stack_.back()->vector.get())->push(text);
+                stack_.back()->vector->push(new Detail::Text{std::move(str)});
                 ++stack_.back()->index;
         }
         void do_begin_(Type type, size_t n){
-                stack_.emplace_back(new GVStackFrame{type});
+                auto br = ( type == Type_Map ? "{" : "[" );
+                stack_.emplace_back(new Detail::GVStackFrame{type});
+                stack_.back()->vector->push(new Detail::Text{br});
+
         }
         void do_end_(Type type){
-                std::cerr << "popping " << stack_.size() << "\n";
-                std::shared_ptr<Node> vec = stack_.back()->vector;
+                auto br = ( type == Type_Map ? "}" : "]" );
+                stack_.back()->vector->push(new Detail::Text{br});
+                auto vec = stack_.back()->vector;
                 stack_.pop_back();
-
-                if( stack_.size() ){
-                        reinterpret_cast<Vector*>(stack_.back()->vector.get())->push(vec);
-                }
+                stack_.back()->vector->push(vec);
         }
 
 private:
-        std::list<GVStackFrame*> stack_;
+        std::list<Detail::GVStackFrame*> stack_;
 };
 void JsonObject::Display(std::ostream& ostr, unsigned indent)const{
-        #if 0
-        auto print_indent = [&](){
-                ostr << std::string(indent*4,' ');
-        };
-        const char* comma = "";
-        switch(type_){
-        case Type_Nil:
-                print_indent();
-                ostr << "{}";
-                break;
-        case Type_Bool:
-                print_indent();
-                ostr << as_bool_;
-                break;
-        case Type_Integer:
-                print_indent();
-                ostr << as_int_;
-                break;
-        case Type_Float:
-                print_indent();
-                ostr << as_float_;
-                break;
-        case Type_String:
-                print_indent();
-                ostr << as_string_;
-                break;
-        case Type_Array:
-                print_indent();
-                ostr << "[\n";
-                comma = ", ";
-                for(auto const& _ : as_array_ ){
-                        _.Display(ostr, indent+1);
-                        ostr << comma << "\n";
-                        comma = ", ";
-                }
-                print_indent();
-                ostr << "]";
-                break;
-        case Type_Map:
-                print_indent();
-                ostr << "{\n";
-                comma = ", ";
-                for(auto const& _ : as_map_ ){
-                        _.first.Display(ostr, indent+1);
-                        _.second.Display(ostr, indent+1);
-                        ostr << comma << "\n";
-                        comma = ", ";
-                }
-                print_indent();
-                ostr << "}";
-                break;
-        }
-        #endif
         graph_visitor v;
         this->Accept(v);
         v.Render(std::cout);
+        //v.Debug();
 }
 
 namespace Frontend{
@@ -1667,6 +1652,8 @@ TEST(JsonObject, maker){
         detail::basic_parser<Detail::JsonObjectMaker,decltype(iter)> p(m,iter, end);
         p.parse();
         auto ret = m.make();
+        JsonObject::debug_visitor dbg;
+        ret.Accept(dbg);
         std::cout << ret << "\n";
 }
 
