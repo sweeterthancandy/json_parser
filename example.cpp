@@ -7,6 +7,10 @@ int main(){
 
         // parse
         obj.Parse(R"( { "primes":[2,5,7,11,13] } )");
+        
+        // empty aggregates
+        obj["empty_array"] = Array;
+        obj["empty_map"] = Map;
 
         // assign an array
         obj["nice_numbers"] = Array("two", 3, 4.4);
@@ -16,8 +20,7 @@ int main(){
                          ("two",2);
 
 
-        obj["empty_array"] = Array;
-        obj["empty_map"] = Map;
+        
 
         // we can use an integer as a key as well
         obj[23]  = "twentry three";
@@ -64,7 +67,6 @@ int main(){
         JsonObject other;
         // reparse
         other.Parse(s);
-        
 
 }
 
