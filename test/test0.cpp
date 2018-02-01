@@ -32,7 +32,9 @@ static std::string json_sample_text = R"(
   ],
   "gender": {
     "type": "male"
-  }
+  },
+  "dummy":{},
+  "one_to_ten":[1,2,3,4,5,6,7,8,9,10]
 }
 )";
 
@@ -44,6 +46,7 @@ protected:
         }
         std::vector<std::string> valid_strings = {
                 "{}",
+                "{{}}",
                 "[]",
                 "   {  }    ",
                 "  [ ]   ",
@@ -1028,50 +1031,54 @@ namespace Detail{
                 newlines, then collage the newlines 
                 to something sensible,
          */
+        enum NodeType{
+                // atomic text
+                NodeType_Text,
+                /* optional space, for example consimer 
+                      {'hello':[1,{'a':[2,3]}]},
+                   this may get rendered as
+                      {
+                        'hello':[
+                          1,
+                          {
+                            'a':[
+                              2,
+                              3
+                            ]
+                          }
+                        ]
+                      },
+                   because consider the case where 'a' is replaced by a 
+                   100 charcter sentance, or each number repalced by a 
+                   50 digit number, the above algrebaric formatting 
+                   would be correct. However in the above case, we could
+                   'collapase' parts of the formatting using simple rules.
+                        We use options to have an optional Text, which 
+                   will almost certainly be whitespace. We can then
+                   run an optimizer to remove the Optional Text where
+                   unneccasry
+                */
+                NodeType_Optional,
+                /*
+                  A Vector is going to be the aggragate type we use.
+                  for all elements whithin a map or array, they are 
+                  part of the same vector etc, meaning the indent 
+                  should be consistent. In the above example we should
+                  get 
+                        Vector("hello:", Vector(1, Vector("a:", Vector(2,3))))
+                        Vector("hello:", Optional("\n    "), Vector(1, Vector("a:", Vector(2,3))))
+
+                 */
+                NodeType_Vector,
+
+                NodeType_Indent,
+                NodeType_NewLine,
+                NodeType_MapBegin,
+                NodeType_MapEnd,
+                NodeType_ArrayBegin,
+                NodeType_ArrayEnd,
+        };
         struct Node{
-                enum NodeType{
-                        // atomic text
-                        NodeType_Text,
-                        /* optional space, for example consimer 
-                              {'hello':[1,{'a':[2,3]}]},
-                           this may get rendered as
-                              {
-                                'hello':[
-                                  1,
-                                  {
-                                    'a':[
-                                      2,
-                                      3
-                                    ]
-                                  }
-                                ]
-                              },
-                           because consider the case where 'a' is replaced by a 
-                           100 charcter sentance, or each number repalced by a 
-                           50 digit number, the above algrebaric formatting 
-                           would be correct. However in the above case, we could
-                           'collapase' parts of the formatting using simple rules.
-                                We use options to have an optional Text, which 
-                           will almost certainly be whitespace. We can then
-                           run an optimizer to remove the Optional Text where
-                           unneccasry
-                        */
-                        NodeType_Optional,
-                        /*
-                          A Vector is going to be the aggragate type we use.
-                          for all elements whithin a map or array, they are 
-                          part of the same vector etc, meaning the indent 
-                          should be consistent. In the above example we should
-                          get 
-                                Vector("hello:", Vector(1, Vector("a:", Vector(2,3))))
-                                Vector("hello:", Optional("\n    "), Vector(1, Vector("a:", Vector(2,3))))
-
-                         */
-                        NodeType_Vector,
-
-                        NodeType_Indent,
-                        NodeType_NewLine,
-                };
                 explicit Node(NodeType type):type_{type}{}
                 virtual ~Node()=default;
 
@@ -1089,9 +1096,9 @@ namespace Detail{
         private:
                 NodeType type_;
         };
-        struct Text : Node{
-                explicit Text(std::string str):
-                        Node{NodeType_Text},
+        struct TextBase : Node{
+                explicit TextBase(NodeType type, std::string str):
+                        Node{type},
                         str_{std::move(str)}
                 {}
                 size_t Width()const override{
@@ -1107,6 +1114,31 @@ namespace Detail{
                 }
         private:
                 std::string str_;
+        };
+        struct Text : TextBase{
+                explicit Text(std::string str):
+                        TextBase{NodeType_Text, std::move(str)}
+                {}
+        };
+        struct MapBegin : TextBase{
+                explicit MapBegin():
+                        TextBase{NodeType_MapBegin, "{"}
+                {}
+        };
+        struct MapEnd : TextBase{
+                explicit MapEnd():
+                        TextBase{NodeType_MapEnd, "}"}
+                {}
+        };
+        struct ArrayBegin : TextBase{
+                explicit ArrayBegin():
+                        TextBase{NodeType_ArrayBegin, "["}
+                {}
+        };
+        struct ArrayEnd : TextBase{
+                explicit ArrayEnd():
+                        TextBase{NodeType_ArrayEnd, "]"}
+                {}
         };
         
         struct Indent : Node{
@@ -1129,6 +1161,8 @@ namespace Detail{
         private:
                 unsigned n_;
         };
+
+        
         struct NewLine : Node{
                 NewLine():Node{NodeType_NewLine}{}
                 size_t Width()const override{
@@ -1161,8 +1195,23 @@ namespace Detail{
                 void push(Node* ptr){ 
                         vec_.push_back(ptr);
                 }
-                auto begin()const{ return vec_.begin(); }
-                auto end()const{ return vec_.end(); }
+                auto begin(){ return vec_.begin(); }
+                auto end(){ return vec_.end(); }
+
+                auto const& operator[](size_t idx)const{
+                        return vec_.at(idx);
+                }
+                auto size()const{ return vec_.size(); }
+                void erase(size_t idx){
+                        decltype(vec_) next;
+                        for(size_t i=0;i!=vec_.size();++i){
+                                if( i == idx )
+                                        continue;
+                                next.push_back(vec_[i]);
+                        }
+                        vec_ = std::move(next);
+                }
+                void clear(){ vec_.clear(); }
                 
 
                 // this doesn't make sense unless we ignore newlines etc
@@ -1285,42 +1334,161 @@ struct JsonObject::graph_visitor : visitor{
                         std::cout << s->vector->DebugString() << "\n";
                 }
         }
+        void Optmize(){
+                using namespace Detail;
+
+                std::vector<Vector*> stack{stack_.back()->vector};
+                std::vector<Vector*> todo_last;
+
+
+                for(;stack.size();){
+                        auto head = stack.back();
+                        stack.pop_back();
+
+                        todo_last.push_back(head);
+
+                        for(auto item : *head){
+                                if( item->GetType() == NodeType_Vector ){
+                                        stack.push_back(reinterpret_cast<Vector*>(item));
+                                }
+                        }
+                }
+
+                std::cout << "todo_last.size() = " << todo_last.size() << "\n";
+
+                /*
+                        1) make 
+                 */
+                for(size_t idx=todo_last.size();idx!=0;){
+                        --idx;
+                        auto& head = *todo_last[idx];
+
+                        /* see if we want collapse
+                           [
+                           1
+                           ,2
+                           ,3
+                           ,4
+                           ],
+                           etc
+                           */
+                        auto try_collage_aggregate = [&](){
+                                size_t aggregate_width = 0;
+                                std::vector<Node*> nodes;
+                                for(auto ptr : head ){
+                                        std::cout << ptr->DebugString() << "\n";
+                                        std::cout << ptr->GetType() << "\n";
+                                        switch(ptr->GetType()){
+                                        case NodeType_Text:
+                                        case NodeType_MapBegin:
+                                        case NodeType_MapEnd:
+                                        case NodeType_ArrayBegin:
+                                        case NodeType_ArrayEnd:
+                                                aggregate_width += ptr->Width();
+                                                nodes.push_back(ptr);
+                                                break;
+                                        case NodeType_Optional:
+                                        case NodeType_NewLine:
+                                        case NodeType_Indent:
+                                                // do nothing, this is what we're skipping
+                                                break;
+                                        default:
+                                                // ok we can't collage nested maps etc (or can we?)
+                                                return;
+                                        }
+                                }
+                                std::cout << "aggregate_width = " << aggregate_width << "\n";
+                                // try replace it
+                                if( aggregate_width < 80 ){
+                                        std::cout << "replacing\n";
+                                        head.clear();
+                                        for(auto _ : nodes)
+                                                head.push(_);
+                                }
+                        };
+                        try_collage_aggregate();
+                        std::cout << "\n\n";
+
+
+                }
+        }
 private:
         void do_primitive_(std::string str){
+                enum Transition{
+                        Transition_Other,
+                        Transition_MapKey,
+                        Transition_MapValue,
+                };
+                Transition tran = Transition_Other;
+
                 if( stack_.back()->type == Type_Map ){
-                        if( stack_.back()->index % 2 == 0 )
-                                str += ":";
-                }
-                auto opt = new Detail::Vector{};
-                opt->push( new Detail::NewLine{} );
-                opt->push( new Detail::Indent(stack_.size()) );
-                stack_.back()->vector->push( new Detail::Optional{opt} );
-                if( stack_.back()->index ){
-                        stack_.back()->vector->push( new Detail::Text(", ") );
+                        if( stack_.back()->index % 2 == 0 ){
+                                tran = Transition_MapKey;
+                        } else{
+                                tran = Transition_MapValue;
+                        }
+                } 
+
+                maybe_comma_();
+
+                if( tran != Transition_MapValue ){
+                        auto opt = new Detail::Vector{};
+                        opt->push( new Detail::NewLine{} );
+                        opt->push( new Detail::Indent(stack_.size()) );
+                        stack_.back()->vector->push( new Detail::Optional{opt} );
                 }
                 stack_.back()->vector->push(new Detail::Text{std::move(str)});
+                if( tran == Transition_MapKey ){
+                        stack_.back()->vector->push(new Detail::Text{":"});
+                }
+
                 ++stack_.back()->index;
         }
         void do_begin_(Type type, size_t n){
-                auto br = ( type == Type_Map ? "{" : "[" );
+                maybe_comma_();
+
                 stack_.emplace_back(new Detail::GVStackFrame{type});
-                stack_.back()->vector->push(new Detail::Text{br});
+                if( type == Type_Map ){
+                        stack_.back()->vector->push(new Detail::MapBegin{});
+                } else {
+                        stack_.back()->vector->push(new Detail::ArrayBegin{});
+                }
 
         }
         void do_end_(Type type){
-                auto br = ( type == Type_Map ? "}" : "]" );
-                stack_.back()->vector->push(new Detail::Text{br});
+                auto opt = new Detail::Vector{};
+                opt->push( new Detail::NewLine{} );
+                opt->push( new Detail::Indent(stack_.size() - 1) );
+                stack_.back()->vector->push(new Detail::Optional{opt});
+                if( type == Type_Map ){
+                        stack_.back()->vector->push(new Detail::MapEnd{});
+                } else {
+                        stack_.back()->vector->push(new Detail::ArrayEnd{});
+                }
                 auto vec = stack_.back()->vector;
+
                 stack_.pop_back();
                 stack_.back()->vector->push(vec);
+                ++stack_.back()->index;
         }
 
 private:
+        void maybe_comma_(){
+                if( stack_.back()->index == 0 )
+                        return;
+                if( stack_.back()->type == Type_Map ){
+                        if( stack_.back()->index % 2 == 1 )
+                                return;
+                } 
+                stack_.back()->vector->push( new Detail::Text(", ") );
+
+        }
         std::list<Detail::GVStackFrame*> stack_;
 };
 void JsonObject::Display(std::ostream& ostr, unsigned indent)const{
         graph_visitor v;
         this->Accept(v);
+        v.Optmize();
         v.Render(std::cout);
         //v.Debug();
 }
