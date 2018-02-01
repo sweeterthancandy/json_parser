@@ -234,7 +234,7 @@ TEST(JsonObject, maker){
         std::cout << ret << "\n";
 }
 
-TEST(other, kjk){
+TEST(JsonObject, access){
         JsonObject obj;
         obj.Parse(json_sample_text);
         std::cout << obj << "\n";
@@ -244,13 +244,10 @@ TEST(other, kjk){
         EXPECT_EQ( "New York", obj["address"]["city"].AsString() );
         EXPECT_ANY_THROW(  obj["address"]["city"].AsInteger());
         EXPECT_EQ( 10021 , obj["address"]["postalCode"].AsInteger());
-        
-        std::cout << obj.ToString() << "\n";
+}
+TEST(JsonObject, IntArray){
 
-        for(auto _ : obj ){
-                std::cout << _.GetType() << "\n";
-        }
-
+        JsonObject obj; 
         obj.Parse("[1,2,3]");
         EXPECT_EQ( 3, obj.size());
         int sum = 0;
@@ -264,4 +261,19 @@ TEST(other, kjk){
 
 }
 
+TEST(JsonObject, ToString){
+        JsonObject proto, obj;
+        proto.Parse("[1,2,3]");
+        obj.Parse( proto.ToString());
+        obj.Display();
+}
+
+TEST(JsonObject, ToStringWiki){
+        std::stringstream to, from;
+        JsonObject proto, obj;
+        proto.Parse(json_sample_text);
+        obj.Parse( proto.ToString());
+
+        EXPECT_EQ( proto.ToString(), obj.ToString());
+}
 

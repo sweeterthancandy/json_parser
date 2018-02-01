@@ -751,7 +751,7 @@ struct JsonObject{
                 }
         }
         // multiline pretty
-        inline void Display(std::ostream& ostr, unsigned indent = 0)const;
+        inline void Display(std::ostream& ostr = std::cout, unsigned indent = 0)const;
         // single line
         inline std::string ToString()const;
 
