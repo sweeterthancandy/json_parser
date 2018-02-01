@@ -2,13 +2,14 @@
 #include <unordered_map>
 #include <list>
 
-#include "json_parser.h"
+#include "gjson/basic_parser.h"
+#include "gjson/variant.h"
 
 #include <boost/type_index.hpp>
 #include <boost/optional.hpp>
 
-using namespace json_parser;
-using namespace json_parser::variant;
+using namespace gjson;
+using namespace gjson::variant;
 
 static std::string json_sample_text = R"(
 {

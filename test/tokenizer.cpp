@@ -1,13 +1,14 @@
+#include "gjson/tokenizer.h"
+
 #include <gtest/gtest.h>
 #include <unordered_map>
 #include <list>
 
-#include "json_parser.h"
-
 #include <boost/type_index.hpp>
 #include <boost/optional.hpp>
 
-using namespace json_parser;
+
+using namespace gjson;
 
 static std::string json_sample_text = R"(
 {

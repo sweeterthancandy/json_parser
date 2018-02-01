@@ -1,8 +1,8 @@
-#include "JsonObject.h"
-#include "JsonObjectMaker.h"
-#include "basic_parser.h"
+#include "gjson/JsonObject.h"
+#include "gjson/JsonObjectMaker.h"
+#include "gjson/basic_parser.h"
 
-namespace json_parser{
+namespace gjson{
 
 void JsonObject::Parse(std::string const& s){
         JsonObjectMaker m;
@@ -539,4 +539,4 @@ std::string JsonObject::ToString()const{
         return sstr.str();
 }
 
-} // json_parser
+} // gjson

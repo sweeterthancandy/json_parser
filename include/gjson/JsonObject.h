@@ -9,7 +9,7 @@
 #include <vector>
 #include <iterator>
 
-namespace json_parser{
+namespace gjson{
 
 namespace Detail{
         template<unsigned Order>
@@ -853,6 +853,6 @@ namespace{
 
 
 
-} // json_parser
+} // gjson
 
 #endif // JSON_PARSER_JSONOBJECT_H

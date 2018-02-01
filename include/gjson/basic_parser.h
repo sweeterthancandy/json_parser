@@ -6,7 +6,7 @@
 #include "tokenizer.h"
 #include <iostream>
 
-namespace json_parser {
+namespace gjson {
 
         #define PARSER_ON_ERROR( MSG )                                                  \
                 do {                                                                    \

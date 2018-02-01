@@ -1,7 +1,6 @@
-#include "JsonObject.h"
-#include "JsonObjectMaker.h"
-
-#include "basic_parser.h"
+#include "gjson/JsonObject.h"
+#include "gjson/JsonObjectMaker.h"
+#include "gjson/basic_parser.h"
 
 #include <unordered_map>
 #include <list>
@@ -9,7 +8,7 @@
 
 
 
-using namespace json_parser;
+using namespace gjson;
 
 static std::string json_sample_text = R"(
 {

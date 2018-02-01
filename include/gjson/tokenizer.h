@@ -7,7 +7,7 @@
 #include <boost/optional.hpp>
 #include <boost/optional/optional_io.hpp>
 
-namespace json_parser{
+namespace gjson{
 
         #define TOKEN_TYPES/**/\
                 (left_curl)\
@@ -281,5 +281,5 @@ namespace json_parser{
         using tokenizer = basic_tokenizer<std::string::const_iterator>;
 
         #undef TOKENIZER_ERROR
-} // json_parser
+} // gjson
 #endif // JSON_PARSER_TOKENIZER_H

@@ -1,8 +1,8 @@
-#include "JsonObject.h"
+#include "gjson/JsonObject.h"
 
 
 int main(){
-        using namespace json_parser;
+        using namespace gjson;
         JsonObject obj;
 
         // parse

@@ -16,7 +16,7 @@
 #include <boost/variant.hpp>
 
 
-namespace json_parser{
+namespace gjson{
 namespace variant{
 
 
@@ -575,7 +575,7 @@ namespace variant{
                 return try_parse(s.begin(), s.end());
         }
 } // variant
-} // json_parser
+} // gjson
 
 
 #endif // JSON_PARSER_VARIANT_H

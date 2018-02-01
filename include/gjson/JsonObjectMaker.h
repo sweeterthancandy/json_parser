@@ -1,7 +1,7 @@
 #ifndef JSON_PARSER_JSONOBJECTMAKER_H
 #define JSON_PARSER_JSONOBJECTMAKER_H
 
-namespace json_parser{
+namespace gjson{
         struct JsonObjectMaker{
 
                 struct StackFrame{
@@ -85,7 +85,7 @@ namespace json_parser{
                 std::vector<JsonObject> out_;
         };
         
-} // json_parser
+} // gjson
 
 
 #endif // JSON_PARSER_JSONOBJECTMAKER_H

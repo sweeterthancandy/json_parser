@@ -5,7 +5,7 @@ This is a json parser written in C++.
 
 
         int main(){
-                using namespace json_parser;
+                using namespace gjson;
                 JsonObject obj;
 
                 // parse

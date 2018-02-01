@@ -18,14 +18,14 @@ aux_source_directory(test test_sources)
 
 find_package(GTest REQUIRED)
 
-include_directories(include/json_parser)
+include_directories(include)
 
 set( lib_src src/JsonObject.cpp )
 add_library(gjson_lib SHARED ${lib_src}) 
 
-add_executable( json_parser_tests ${test_sources} )
-target_link_libraries(json_parser_tests gjson_lib)
-target_link_libraries(json_parser_tests GTest::GTest GTest::Main)
+add_executable( json_tests ${test_sources} )
+target_link_libraries(json_tests gjson_lib)
+target_link_libraries(json_tests GTest::GTest GTest::Main)
 
 add_executable( example example.cpp )
 target_link_libraries(example gjson_lib)
