@@ -1,4 +1,4 @@
-This is my implemention of a json parser
+This is a json parser written in C++. 
 
         int main(){        
                 auto str = R"(

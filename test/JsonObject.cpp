@@ -146,7 +146,6 @@ TEST(JsonObject, Map){
 }
 
 TEST(JsonObject, FrontendArray){
-        using namespace Frontend;
         auto arr = Array(2,"hello",false);
         EXPECT_EQ( 3, arr.size());
         EXPECT_TRUE( arr[0] == 2 );
@@ -179,7 +178,6 @@ TEST(JsonObject, FrontendArray){
 }
 
 TEST(JsonObject, FrontendMap){
-        using namespace Frontend;
 
         JsonObject m = Map("one",1)(2, "two");
         EXPECT_EQ( 2, m.size() );
@@ -188,7 +186,6 @@ TEST(JsonObject, FrontendMap){
 }
 
 TEST(JsonObject, simple){
-        using namespace Frontend;
         //JsonObject obj{JsonObject::Tag_Array{}};
         auto obj = Array(1,"hello", 23.25, Array(1,2,3), false, Map(1,"one")(2,"two"));
         obj.push_back(true);
@@ -203,7 +200,6 @@ TEST(JsonObject, simple){
 }
 
 TEST(JsonObject, foreach){
-        using namespace Frontend;
         auto obj = Array(1, "two", 3.333, Array(1,2,3), Map("a", "A")("b", 35.555));
         for( auto const& _ : obj){
                 switch(_.GetType()){
@@ -273,7 +269,22 @@ TEST(JsonObject, ToStringWiki){
         JsonObject proto, obj;
         proto.Parse(json_sample_text);
         obj.Parse( proto.ToString());
-
         EXPECT_EQ( proto.ToString(), obj.ToString());
 }
 
+
+TEST(JsonObject, Assign){
+        JsonObject obj;
+        obj["hello"] = "world";
+
+        obj["one_to_three"] = Array(1,2,3);
+        obj[45.5] = Map("one",1)(2,"two");
+
+        EXPECT_EQ(3, obj.size());
+        EXPECT_EQ("world", obj["hello"].AsString() );
+        EXPECT_EQ(1, obj["one_to_three"][0].AsInteger() );
+        EXPECT_EQ(2, obj["one_to_three"][1].AsInteger() );
+        EXPECT_EQ(3, obj["one_to_three"][2].AsInteger() );
+        EXPECT_EQ(1, obj[45.5]["one"].AsInteger());
+        EXPECT_EQ("two", obj[45.5][2].AsString());
+}

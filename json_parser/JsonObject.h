@@ -301,7 +301,10 @@ struct JsonObject{
         }
 
         JsonObject(){
-                DoAssign(Tag_Nil{});
+                /*
+                        By default we are a map
+                 */
+                DoAssign(Tag_Map{});
         }
         JsonObject(JsonObject const& that){
                 Assign(that);
@@ -1142,7 +1145,7 @@ namespace Detail{
                         do_primitive_( boost::lexical_cast<std::string>(value));
                 }
                 void on_string(std::string const& value)override{
-                        do_primitive_( boost::lexical_cast<std::string>(std::quoted(value)) );
+                        do_primitive_( "\"" + value + "\"");
                 }
                 VisitorCtrl begin_array(size_t n)override{
                         do_begin_(Type_Array, n);
@@ -1336,7 +1339,7 @@ std::string JsonObject::ToString()const{
         return sstr.str();
 }
 
-namespace Frontend{
+namespace Detail{
         struct ArrayType{
                 template<class... Args>
                 JsonObject operator()(Args&&... args)const{
@@ -1380,11 +1383,11 @@ namespace Frontend{
                         return obj;
                 }
         };
+} // Defailt
 
-        ArrayType Array = {};
-        MapType Map = {};
+Detail::ArrayType Array = {};
+Detail::MapType Map = {};
 
-} // Frontend
 
 namespace Detail{
         struct JsonObjectMaker{
