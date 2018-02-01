@@ -245,6 +245,7 @@ namespace json_parser{
                 };
         }
 
+        inline
         std::string to_string(node const& root){
                 using ctx_t = detail::to_string_context<detail::single_line_policy>;
                 std::stringstream sstr;
@@ -253,6 +254,7 @@ namespace json_parser{
                 boost::apply_visitor( aux, root);
                 return sstr.str();
         }
+        inline
         void display(node const& root, std::ostream& ostr = std::cout){
                 using ctx_t = detail::to_string_context<detail::multi_line_policy>;
                 ctx_t ctx(ostr);

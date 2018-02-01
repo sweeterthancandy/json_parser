@@ -31,6 +31,7 @@ namespace json_parser{
         enum class token_type{
                 BOOST_PP_SEQ_FOR_EACH_I(TOKEN_ENUM_AUX,~,TOKEN_TYPES)
         };
+        inline
         std::ostream& operator<<(std::ostream& ostr, token_type type){
                 switch(type){
                         BOOST_PP_SEQ_FOR_EACH(TOKEN_OSTREAM_AUX,~,TOKEN_TYPES)

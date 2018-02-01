@@ -20,6 +20,7 @@ namespace json_parser{
                 }
                 return m.make();
         }
+        inline
         decltype(auto) try_parse(std::string const& s){
                 return try_parse(s.begin(), s.end());
         }
@@ -33,6 +34,7 @@ namespace json_parser{
                 p.parse();
                 return m.make();
         }
+        inline
         decltype(auto) parse(std::string const& s){
                 return parse(s.begin(), s.end());
         }
