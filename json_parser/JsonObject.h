@@ -1,5 +1,7 @@
 #include "json_parser.h"
 
+namespace json_parser{
+
 namespace Detail{
         template<unsigned Order>
         struct precedence_device : precedence_device<Order-1>{};
@@ -7,50 +9,57 @@ namespace Detail{
         struct precedence_device<0>{};
 } // Detail
 
+enum Type{
+        Begin_Primitive,
+                Type_Nil = Begin_Primitive,
+                Type_Bool,
+                Type_Integer,
+                Type_Float,
+                Type_String,
+        End_Primitive,
+        Begin_Aggregate,
+                Type_Array = Begin_Aggregate,
+                Type_Map,
+        End_Aggregate,
+        Type_NotAType = 100,
+};
+static std::string Type_to_string(Type e) {
+        switch (e) {
+        case Type_Nil:
+                return "Type_Nil";
+        case Type_Bool:
+                return "Type_Bool";
+        case Type_Integer:
+                return "Type_Integer";
+        case Type_Float:
+                return "Type_Float";
+        case Type_String:
+                return "Type_String";
+        case Type_Array:
+                return "Type_Array";
+        case Type_Map:
+                return "Type_Map";
+        default:{
+                std::stringstream sstr;
+                sstr << "unknown(" << (int)e << ")";
+                return sstr.str();
+        }
+        }
+}
+inline std::ostream& operator<<(std::ostream& ostr, Type e){
+        return ostr << Type_to_string(e);
+}
+
+enum VisitorCtrl{
+        VisitorCtrl_Skip,
+        VisitorCtrl_Decend,
+        VisitorCtrl_Nop,
+};
+
 struct JsonObject{
         using array_type = std::vector<JsonObject>;
         using map_type = std::map<JsonObject, JsonObject>;
 
-        enum Type{
-                Begin_Primitive,
-                        Type_Nil = Begin_Primitive,
-                        Type_Bool,
-                        Type_Integer,
-                        Type_Float,
-                        Type_String,
-                End_Primitive,
-                Begin_Aggregate,
-                        Type_Array = Begin_Aggregate,
-                        Type_Map,
-                End_Aggregate,
-                Type_NotAType = 100,
-        };
-        static std::string Type_to_string(Type e) {
-                switch (e) {
-                case Type_Nil:
-                        return "Type_Nil";
-                case Type_Bool:
-                        return "Type_Bool";
-                case Type_Integer:
-                        return "Type_Integer";
-                case Type_Float:
-                        return "Type_Float";
-                case Type_String:
-                        return "Type_String";
-                case Type_Array:
-                        return "Type_Array";
-                case Type_Map:
-                        return "Type_Map";
-                default:{
-                        std::stringstream sstr;
-                        sstr << "unknown(" << (int)e << ")";
-                        return sstr.str();
-                }
-                }
-        }
-        friend inline std::ostream& operator<<(std::ostream& ostr, Type e){
-                return ostr << Type_to_string(e);
-        }
         /*
                 The point of these are to allow construction of the
                 form
@@ -516,11 +525,6 @@ struct JsonObject{
         }
         // way to communitate weather to
         // go into every sub or not
-        enum VisitorCtrl{
-                VisitorCtrl_Skip,
-                VisitorCtrl_Decend,
-                VisitorCtrl_Nop,
-        };
         struct visitor{
                 virtual void on_nil(){}
                 virtual void on_bool(bool value){}
@@ -532,7 +536,6 @@ struct JsonObject{
                 virtual VisitorCtrl begin_map(size_t n){ return VisitorCtrl_Decend; }
                 virtual void end_map(){ }
         };
-        struct graph_visitor;
 
 
 #if 0
@@ -747,10 +750,13 @@ struct JsonObject{
                         }
                 }
         }
+        // multiline pretty
         inline void Display(std::ostream& ostr, unsigned indent = 0)const;
+        // single line
+        inline std::string ToString()const;
+
         friend std::ostream& operator<<(std::ostream& ostr, JsonObject const& self){
-                self.Display(ostr);
-                return ostr;
+                return ostr << self.ToString();
         }
         void Debug()const{
                 std::cout << "{type=" << Type_to_string(type_) 
@@ -824,6 +830,28 @@ private:
                 }
  */
 namespace Detail{
+        struct RenderContext{
+                enum Config{
+                        Config_Pretty = 1,
+                        Config_SingleLine,
+                        Config_Default = Config_Pretty,
+                };
+                explicit RenderContext(Config config, std::ostream& ostr)
+                        :config_{config}, ostr_{&ostr}
+                {}
+                std::ostream& Put(){ return *ostr_; }
+                bool ConsumeOptional()const{
+                        return config_ == Config_Pretty;
+                }
+                void NewLine(){
+                        if( config_ == Config_SingleLine )
+                                return;
+                        Put() << "\n";
+                }
+        private:
+                Config config_;
+                std::ostream* ostr_;
+        };
         /*
                 Yes we're creating a direct graph
                 to pritn a json object. The idea is 
@@ -890,7 +918,7 @@ namespace Detail{
 
                 // maybe make this multiline
                 virtual size_t Width()const=0;
-                virtual void Render(std::ostream& ostr)const=0;
+                virtual void Render(RenderContext& ctx)const=0;
                 virtual std::string DebugString()const=0;
                 NodeType GetType()const{ return type_; }
         private:
@@ -904,8 +932,8 @@ namespace Detail{
                 size_t Width()const override{
                         return str_.size();
                 }
-                void Render(std::ostream& ostr)const override{
-                        ostr << str_;
+                void Render(RenderContext& ctx)const override{
+                        ctx.Put() << str_;
                 }
                 std::string DebugString()const override{
                         std::stringstream sstr;
@@ -949,9 +977,9 @@ namespace Detail{
                 size_t Width()const override{
                         return n_ * 4;
                 }
-                void Render(std::ostream& ostr)const override{
+                void Render(RenderContext& ctx)const override{
                         if( n_ == 0 ) return;
-                        ostr << std::string(n_ * 4, ' ');
+                        ctx.Put() << std::string(n_ * 4, ' ');
                 }
                 std::string DebugString()const override{
                         std::stringstream sstr;
@@ -968,8 +996,8 @@ namespace Detail{
                 size_t Width()const override{
                         return 0;
                 }
-                void Render(std::ostream& ostr)const override{
-                        ostr << "\n";
+                void Render(RenderContext& ctx)const override{
+                        ctx.NewLine();
                 }
                 std::string DebugString()const override{
                         return "NewLine";
@@ -1033,9 +1061,9 @@ namespace Detail{
                         sstr << "]";
                         return sstr.str();
                 }
-                void Render(std::ostream& ostr)const override{
+                void Render(RenderContext& ctx)const override{
                         for( auto const& ptr : vec_ ){
-                                ptr->Render(ostr);
+                                ptr->Render(ctx);
                         }
                 }
         private:
@@ -1053,8 +1081,10 @@ namespace Detail{
                 size_t Width()const override{
                         return ptr_->Width();
                 }
-                void Render(std::ostream& ostr)const override{
-                        ptr_->Render(ostr);
+                void Render(RenderContext& ctx)const override{
+                        if( ctx.ConsumeOptional() ){
+                                ptr_->Render(ctx);
+                        }
                 }
                 std::string DebugString()const override{
                         std::stringstream sstr;
@@ -1066,7 +1096,7 @@ namespace Detail{
         };
 
         struct GVStackFrame{
-                explicit GVStackFrame(JsonObject::Type t = JsonObject::Type_NotAType)
+                explicit GVStackFrame(Type t = Type_NotAType)
                         :type{t}
                         ,vector{ new Vector }
                 {}
@@ -1074,223 +1104,236 @@ namespace Detail{
                 GVStackFrame(GVStackFrame&&)=delete;
                 GVStackFrame& operator=(GVStackFrame const&)=delete;
                 GVStackFrame& operator=(GVStackFrame&&)=delete;
-                JsonObject::Type type;
+                Type type;
                 Vector* vector;
                 size_t index{0};
         };
 }
-struct JsonObject::graph_visitor : visitor{
-
-
-        graph_visitor(){
-                stack_.push_back(new Detail::GVStackFrame);
-        }
-        ~graph_visitor(){
-                for( auto& ptr : stack_ ){
-                        delete ptr;
-                }
-        }
-
-        graph_visitor(graph_visitor const&)=delete;
-        graph_visitor(graph_visitor&&)=delete;
-        graph_visitor& operator=(graph_visitor const&)=delete;
-        graph_visitor& operator=(graph_visitor&&)=delete;
+namespace Detail{
 
         
-        void on_nil()override{
-                do_primitive_("<nil>");
-        }
-        void on_bool(bool value)override{
-                do_primitive_( value ? "true" : "false" );
-        }
-        void on_integer(std::int64_t value)override{
-                do_primitive_( boost::lexical_cast<std::string>(value));
-        }
-        void on_float(double value)override{
-                do_primitive_( boost::lexical_cast<std::string>(value));
-        }
-        void on_string(std::string const& value)override{
-                do_primitive_( boost::lexical_cast<std::string>(std::quoted(value)) );
-        }
-        VisitorCtrl begin_array(size_t n)override{
-                do_begin_(Type_Array, n);
-                return VisitorCtrl_Decend;
-        }
-        void end_array()override{
-                do_end_( Type_Array);
-        }
-        VisitorCtrl begin_map(size_t n)override{
-                do_begin_(Type_Map, n);
-                return VisitorCtrl_Decend;
-        }
-        void end_map()override{
-                do_end_(Type_Map);
-        }
-        void Render(std::ostream& ostr)const{
-                stack_.back()->vector->Render(ostr);
-        }
-        void Debug()const{
-                for(auto& s : stack_ ){
-                        std::cout << s->vector->DebugString() << "\n";
+        struct GraphVisitor : JsonObject::visitor{
+
+                GraphVisitor(){
+                        stack_.push_back(new Detail::GVStackFrame);
                 }
-        }
-        void Optmize(){
-                using namespace Detail;
-
-                std::vector<Vector*> stack{stack_.back()->vector};
-                std::vector<Vector*> todo_last;
-
-
-                for(;stack.size();){
-                        auto head = stack.back();
-                        stack.pop_back();
-
-                        todo_last.push_back(head);
-
-                        for(auto item : *head){
-                                if( item->GetType() == NodeType_Vector ){
-                                        stack.push_back(reinterpret_cast<Vector*>(item));
-                                }
+                ~GraphVisitor(){
+                        for( auto& ptr : stack_ ){
+                                delete ptr;
                         }
                 }
 
-                /*
-                        1) make 
-                 */
-                for(size_t idx=todo_last.size();idx!=0;){
-                        --idx;
-                        auto& head = *todo_last[idx];
+                GraphVisitor(GraphVisitor const&)=delete;
+                GraphVisitor(GraphVisitor&&)=delete;
+                GraphVisitor& operator=(GraphVisitor const&)=delete;
+                GraphVisitor& operator=(GraphVisitor&&)=delete;
 
-                        /* see if we want collapse
-                           [
-                           1
-                           ,2
-                           ,3
-                           ,4
-                           ],
-                           etc
-                           */
-                        if( head.size() >= 2 ){
-                                if( head[0]->GetType()             == NodeType_MapBegin &&
-                                    head[head.size()-1]->GetType() == NodeType_MapEnd ){
-                                        //std::cout << "we git a map\n";
-                                }
-                                if( head[0]->GetType()             == NodeType_ArrayBegin &&
-                                    head[head.size()-1]->GetType() == NodeType_ArrayEnd ){
-                                        //std::cout << "we git a array\n";
-                                }
+                
+                void on_nil()override{
+                        do_primitive_("<nil>");
+                }
+                void on_bool(bool value)override{
+                        do_primitive_( value ? "true" : "false" );
+                }
+                void on_integer(std::int64_t value)override{
+                        do_primitive_( boost::lexical_cast<std::string>(value));
+                }
+                void on_float(double value)override{
+                        do_primitive_( boost::lexical_cast<std::string>(value));
+                }
+                void on_string(std::string const& value)override{
+                        do_primitive_( boost::lexical_cast<std::string>(std::quoted(value)) );
+                }
+                VisitorCtrl begin_array(size_t n)override{
+                        do_begin_(Type_Array, n);
+                        return VisitorCtrl_Decend;
+                }
+                void end_array()override{
+                        do_end_( Type_Array);
+                }
+                VisitorCtrl begin_map(size_t n)override{
+                        do_begin_(Type_Map, n);
+                        return VisitorCtrl_Decend;
+                }
+                void end_map()override{
+                        do_end_(Type_Map);
+                }
+                void Render(RenderContext& ctx)const{
+                        stack_.back()->vector->Render(ctx);
+                }
+                void Debug()const{
+                        for(auto& s : stack_ ){
+                                std::cout << s->vector->DebugString() << "\n";
                         }
-                        auto try_collage_aggregate = [&](){
-                                size_t aggregate_width = 0;
-                                std::vector<Node*> nodes;
-                                for(auto ptr : head ){
-                                        switch(ptr->GetType()){
-                                        case NodeType_Text:
-                                        case NodeType_MapBegin:
-                                        case NodeType_MapEnd:
-                                        case NodeType_ArrayBegin:
-                                        case NodeType_ArrayEnd:
-                                                aggregate_width += ptr->Width();
-                                                nodes.push_back(ptr);
-                                                break;
-                                        case NodeType_Optional:
-                                        case NodeType_NewLine:
-                                        case NodeType_Indent:
-                                                // do nothing, this is what we're skipping
-                                                break;
-                                        default:
-                                                // ok we can't collage nested maps etc (or can we?)
-                                                return;
+                }
+                void Optmize(){
+                        using namespace Detail;
+
+                        std::vector<Vector*> stack{stack_.back()->vector};
+                        std::vector<Vector*> todo_last;
+
+
+                        for(;stack.size();){
+                                auto head = stack.back();
+                                stack.pop_back();
+
+                                todo_last.push_back(head);
+
+                                for(auto item : *head){
+                                        if( item->GetType() == NodeType_Vector ){
+                                                stack.push_back(reinterpret_cast<Vector*>(item));
                                         }
                                 }
-                                if( aggregate_width < 80 ){
-                                        head.clear();
-                                        for(auto _ : nodes)
-                                                head.push(_);
+                        }
+
+                        /*
+                                1) make 
+                         */
+                        for(size_t idx=todo_last.size();idx!=0;){
+                                --idx;
+                                auto& head = *todo_last[idx];
+
+                                /* see if we want collapse
+                                   [
+                                   1
+                                   ,2
+                                   ,3
+                                   ,4
+                                   ],
+                                   etc
+                                   */
+                                if( head.size() >= 2 ){
+                                        if( head[0]->GetType()             == NodeType_MapBegin &&
+                                            head[head.size()-1]->GetType() == NodeType_MapEnd ){
+                                                //std::cout << "we git a map\n";
+                                        }
+                                        if( head[0]->GetType()             == NodeType_ArrayBegin &&
+                                            head[head.size()-1]->GetType() == NodeType_ArrayEnd ){
+                                                //std::cout << "we git a array\n";
+                                        }
                                 }
+                                auto try_collage_aggregate = [&](){
+                                        size_t aggregate_width = 0;
+                                        std::vector<Node*> nodes;
+                                        for(auto ptr : head ){
+                                                switch(ptr->GetType()){
+                                                case NodeType_Text:
+                                                case NodeType_MapBegin:
+                                                case NodeType_MapEnd:
+                                                case NodeType_ArrayBegin:
+                                                case NodeType_ArrayEnd:
+                                                        aggregate_width += ptr->Width();
+                                                        nodes.push_back(ptr);
+                                                        break;
+                                                case NodeType_Optional:
+                                                case NodeType_NewLine:
+                                                case NodeType_Indent:
+                                                        // do nothing, this is what we're skipping
+                                                        break;
+                                                default:
+                                                        // ok we can't collage nested maps etc (or can we?)
+                                                        return;
+                                                }
+                                        }
+                                        if( aggregate_width < 80 ){
+                                                head.clear();
+                                                for(auto _ : nodes)
+                                                        head.push(_);
+                                        }
+                                };
+                                try_collage_aggregate();
+
+                        }
+                }
+        private:
+                void do_primitive_(std::string str){
+                        enum Transition{
+                                Transition_Other,
+                                Transition_MapKey,
+                                Transition_MapValue,
                         };
-                        try_collage_aggregate();
+                        Transition tran = Transition_Other;
+
+                        if( stack_.back()->type == Type_Map ){
+                                if( stack_.back()->index % 2 == 0 ){
+                                        tran = Transition_MapKey;
+                                } else{
+                                        tran = Transition_MapValue;
+                                }
+                        } 
+
+                        maybe_comma_();
+
+                        if( tran != Transition_MapValue ){
+                                auto opt = new Detail::Vector{};
+                                opt->push( new Detail::NewLine{} );
+                                opt->push( new Detail::Indent(stack_.size()) );
+                                stack_.back()->vector->push( new Detail::Optional{opt} );
+                        }
+                        stack_.back()->vector->push(new Detail::Text{std::move(str)});
+                        if( tran == Transition_MapKey ){
+                                stack_.back()->vector->push(new Detail::Text{":"});
+                        }
+
+                        ++stack_.back()->index;
+                }
+                void do_begin_(Type type, size_t n){
+                        maybe_comma_();
+
+                        stack_.emplace_back(new Detail::GVStackFrame{type});
+                        if( type == Type_Map ){
+                                stack_.back()->vector->push(new Detail::MapBegin{});
+                        } else {
+                                stack_.back()->vector->push(new Detail::ArrayBegin{});
+                        }
 
                 }
-        }
-private:
-        void do_primitive_(std::string str){
-                enum Transition{
-                        Transition_Other,
-                        Transition_MapKey,
-                        Transition_MapValue,
-                };
-                Transition tran = Transition_Other;
-
-                if( stack_.back()->type == Type_Map ){
-                        if( stack_.back()->index % 2 == 0 ){
-                                tran = Transition_MapKey;
-                        } else{
-                                tran = Transition_MapValue;
-                        }
-                } 
-
-                maybe_comma_();
-
-                if( tran != Transition_MapValue ){
+                void do_end_(Type type){
                         auto opt = new Detail::Vector{};
                         opt->push( new Detail::NewLine{} );
-                        opt->push( new Detail::Indent(stack_.size()) );
-                        stack_.back()->vector->push( new Detail::Optional{opt} );
-                }
-                stack_.back()->vector->push(new Detail::Text{std::move(str)});
-                if( tran == Transition_MapKey ){
-                        stack_.back()->vector->push(new Detail::Text{":"});
-                }
+                        opt->push( new Detail::Indent(stack_.size() - 1) );
+                        stack_.back()->vector->push(new Detail::Optional{opt});
+                        if( type == Type_Map ){
+                                stack_.back()->vector->push(new Detail::MapEnd{});
+                        } else {
+                                stack_.back()->vector->push(new Detail::ArrayEnd{});
+                        }
+                        auto vec = stack_.back()->vector;
 
-                ++stack_.back()->index;
-        }
-        void do_begin_(Type type, size_t n){
-                maybe_comma_();
-
-                stack_.emplace_back(new Detail::GVStackFrame{type});
-                if( type == Type_Map ){
-                        stack_.back()->vector->push(new Detail::MapBegin{});
-                } else {
-                        stack_.back()->vector->push(new Detail::ArrayBegin{});
+                        stack_.pop_back();
+                        stack_.back()->vector->push(vec);
+                        ++stack_.back()->index;
                 }
 
-        }
-        void do_end_(Type type){
-                auto opt = new Detail::Vector{};
-                opt->push( new Detail::NewLine{} );
-                opt->push( new Detail::Indent(stack_.size() - 1) );
-                stack_.back()->vector->push(new Detail::Optional{opt});
-                if( type == Type_Map ){
-                        stack_.back()->vector->push(new Detail::MapEnd{});
-                } else {
-                        stack_.back()->vector->push(new Detail::ArrayEnd{});
-                }
-                auto vec = stack_.back()->vector;
-
-                stack_.pop_back();
-                stack_.back()->vector->push(vec);
-                ++stack_.back()->index;
-        }
-
-private:
-        void maybe_comma_(){
-                if( stack_.back()->index == 0 )
-                        return;
-                if( stack_.back()->type == Type_Map ){
-                        if( stack_.back()->index % 2 == 1 )
+        private:
+                void maybe_comma_(){
+                        if( stack_.back()->index == 0 )
                                 return;
-                } 
-                stack_.back()->vector->push( new Detail::Text(", ") );
+                        if( stack_.back()->type == Type_Map ){
+                                if( stack_.back()->index % 2 == 1 )
+                                        return;
+                        } 
+                        stack_.back()->vector->push( new Detail::Text(", ") );
 
-        }
-        std::list<Detail::GVStackFrame*> stack_;
-};
+                }
+                std::list<Detail::GVStackFrame*> stack_;
+        };
+} // Detail
 void JsonObject::Display(std::ostream& ostr, unsigned indent)const{
-        graph_visitor v;
+        Detail::RenderContext ctx(Detail::RenderContext::Config_Pretty, ostr);
+        Detail::GraphVisitor v;
         this->Accept(v);
         v.Optmize();
-        v.Render(std::cout);
+        v.Render(ctx);
+}
+std::string JsonObject::ToString()const{
+        std::stringstream sstr;
+        Detail::RenderContext ctx(Detail::RenderContext::Config_SingleLine, sstr);
+        Detail::GraphVisitor v;
+        this->Accept(v);
+        v.Optmize();
+        v.Render(ctx);
+        return sstr.str();
 }
 
 namespace Frontend{
@@ -1394,9 +1437,9 @@ namespace Detail{
                 } 
         private:
                 void add_any_(JsonObject&& obj){
-                        if( stack_.back().object.GetType() == JsonObject::Type_Array ){
+                        if( stack_.back().object.GetType() == Type_Array ){
                                 stack_.back().object.push_back_unchecked( obj );
-                        } else if( stack_.back().object.GetType() == JsonObject::Type_Map ){
+                        } else if( stack_.back().object.GetType() == Type_Map ){
                                 if( stack_.back().param_stack_.empty() ){
                                         // this must be the key, save it because we 
                                         // need to add key/value pair atomically
@@ -1428,13 +1471,14 @@ namespace Detail{
         };
 }
 
-#include "json_parser.h"
 
 inline void JsonObject::Parse(std::string const& s){
         Detail::JsonObjectMaker m;
         auto iter = s.begin(), end = s.end();
-        json_parser::detail::basic_parser<Detail::JsonObjectMaker,decltype(iter)> p(m,iter, end);
+        detail::basic_parser<Detail::JsonObjectMaker,decltype(iter)> p(m,iter, end);
         p.parse();
         auto ret = m.make();
         *this = ret;
 }
+
+} // json_parser

@@ -44,7 +44,7 @@ protected:
         }
         std::vector<std::string> valid_strings = {
                 "{}",
-                "{{}}",
+                "{1:{}}",
                 "[]",
                 "   {  }    ",
                 "  [ ]   ",
@@ -132,9 +132,12 @@ protected:
         };
 };
 
+TEST_F( Parser, bad_valid_strings){
+}
+
 TEST_F( Parser, valid_strings){
         for( auto const& str : valid_strings ){
-                EXPECT_TRUE( !!try_parse(str) ) << str;
+                EXPECT_TRUE( !!try_parse(str) );
                 EXPECT_NO_THROW( parse(str) );
         }
 }
@@ -157,14 +160,16 @@ TEST_F( Parser, invalid_strings){
 TEST_F( Parser, to_string ){
         for( auto const& str : valid_strings ){
                 auto s = to_string( parse(str) );
-                std::cout << s << "\n";
+                //std::cout << s << "\n";
         }
 }
+#if 0
 TEST_F( Parser, display ){
         for( auto const& str : valid_strings ){
                 display( parse(str) );
         }
 }
+#endif
 
 TEST_F( Parser, try_cast ){
         auto root = parse("[1,2,3]");

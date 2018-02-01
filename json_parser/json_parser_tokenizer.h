@@ -27,7 +27,7 @@ namespace json_parser{
         #define TOKEN_ENUM_AUX(r,data,i,elem) BOOST_PP_COMMA_IF(i) elem
         #define TOKEN_OSTREAM_AUX(r,data,elem)\
                 case token_type::elem:\
-                        return ostr << "token_type::" BOOST_PP_STRINGIZE(elem);
+                        return ostr << BOOST_PP_STRINGIZE(elem);
         enum class token_type{
                 BOOST_PP_SEQ_FOR_EACH_I(TOKEN_ENUM_AUX,~,TOKEN_TYPES)
         };
@@ -166,6 +166,9 @@ namespace json_parser{
                 iterator token_end(){
                         return iterator{0};
                 }
+                
+                auto begin(){ return token_begin(); }
+                auto end(){ return token_end(); }
 
 
         private:

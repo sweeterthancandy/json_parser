@@ -38,8 +38,7 @@ static std::string json_sample_text = R"(
 
 TEST(tokenizer, _){
         tokenizer tok(json_sample_text);
-        for(auto iter=tok.token_begin(), end=tok.token_end();iter!=end;++iter){
-        }
+        for(auto t : tok){}
 
 }
 TEST(tokenizer, hello_world){
