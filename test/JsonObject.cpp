@@ -222,7 +222,7 @@ TEST(JsonObject, foreach){
 TEST(JsonObject, maker){
         Detail::JsonObjectMaker m;
         auto iter = json_sample_text.begin(), end = json_sample_text.end();
-        detail::basic_parser<Detail::JsonObjectMaker,decltype(iter)> p(m,iter, end);
+        basic_parser<Detail::JsonObjectMaker,decltype(iter)> p(m,iter, end);
         p.parse();
         auto ret = m.make();
         JsonObject::debug_visitor dbg;

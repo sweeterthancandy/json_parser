@@ -8,6 +8,7 @@
 #include <boost/optional.hpp>
 
 using namespace json_parser;
+using namespace json_parser::variant;
 
 static std::string json_sample_text = R"(
 {

@@ -1,16 +1,21 @@
-#pragma once
+#ifndef JSON_PARSER_BASIC_PARSER_H
+#define JSON_PARSER_BASIC_PARSER_H
 
 #include <boost/exception/all.hpp>
-#include "json_parser_tokenizer.h"
+#include <boost/lexical_cast.hpp>
+#include "tokenizer.h"
+#include <iostream>
 
-namespace json_parser { namespace detail {
+namespace json_parser {
 
         #define PARSER_ON_ERROR( MSG )                                                  \
                 do {                                                                    \
+                        if( false ){                                                    \
                         std::cerr << boost::format( "%s, peak=%s, at=%s)" ) % ( MSG ) % \
                                  boost::get_optional_value_or( tok_.peak(),             \
                                                                not_a_token_ ) %         \
                                  tok_.whats_left();                                     \
+                        }                                                               \
                         BOOST_THROW_EXCEPTION( std::domain_error(                       \
                             str( boost::format( "%s, peak=%s, at=%s)" ) % ( MSG ) %     \
                                  boost::get_optional_value_or( tok_.peak(),             \
@@ -164,4 +169,5 @@ namespace json_parser { namespace detail {
 
         #undef PARSER_ON_ERROR
 
-} }
+} // json_parser_tokenizer
+#endif // JSON_PARSER_BASIC_PARSER_H

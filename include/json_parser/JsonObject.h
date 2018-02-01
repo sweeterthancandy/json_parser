@@ -1,3 +1,5 @@
+#ifndef JSON_PARSER_JSONOBJECT_H
+#define JSON_PARSER_JSONOBJECT_H
 #include "json_parser.h"
 
 #include <list>
@@ -1360,8 +1362,6 @@ namespace Detail{
         };
 } // Defailt
 
-Detail::ArrayType Array = {};
-Detail::MapType Map = {};
 
 
 namespace Detail{
@@ -1447,16 +1447,25 @@ namespace Detail{
                 std::vector<StackFrame> stack_;
                 std::vector<JsonObject> out_;
         };
+        
+}
+
+// theese are per translation unit
+namespace{
+        Detail::ArrayType Array = {};
+        Detail::MapType Map = {};
 }
 
 
 inline void JsonObject::Parse(std::string const& s){
         Detail::JsonObjectMaker m;
         auto iter = s.begin(), end = s.end();
-        detail::basic_parser<Detail::JsonObjectMaker,decltype(iter)> p(m,iter, end);
+        basic_parser<Detail::JsonObjectMaker,decltype(iter)> p(m,iter, end);
         p.parse();
         auto ret = m.make();
         *this = ret;
 }
 
 } // json_parser
+
+#endif // JSON_PARSER_JSONOBJECT_H

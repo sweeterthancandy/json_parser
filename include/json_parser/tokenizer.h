@@ -1,10 +1,11 @@
-#pragma once
+#ifndef JSON_PARSER_TOKENIZER_H
+#define JSON_PARSER_TOKENIZER_H
 
+#include <sstream>
 #include <boost/preprocessor.hpp>
-
+#include <boost/format.hpp>
 #include <boost/optional.hpp>
 #include <boost/optional/optional_io.hpp>
-
 
 namespace json_parser{
 
@@ -281,3 +282,4 @@ namespace json_parser{
 
         #undef TOKENIZER_ERROR
 } // json_parser
+#endif // JSON_PARSER_TOKENIZER_H
