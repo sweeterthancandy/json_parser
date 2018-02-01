@@ -1291,11 +1291,10 @@ private:
                         if( stack_.back()->index % 2 == 0 )
                                 str += ":";
                 }
-                std::string indent;
-                if( stack_.size() )
-                        indent = std::string(stack_.size()*4, ' ');
-                std::string whitespace = "\n" + indent;
-                stack_.back()->vector->push( new Detail::Optional{new Detail::Text{whitespace}});
+                auto opt = new Detail::Vector{};
+                opt->push( new Detail::NewLine{} );
+                opt->push( new Detail::Indent(stack_.size()) );
+                stack_.back()->vector->push( new Detail::Optional{opt} );
                 if( stack_.back()->index ){
                         stack_.back()->vector->push( new Detail::Text(", ") );
                 }
