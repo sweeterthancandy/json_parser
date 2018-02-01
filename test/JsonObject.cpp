@@ -4,6 +4,7 @@
 
 #include "json_parser.h"
 #include "JsonObject.h"
+#include "JsonObjectMaker.h"
 
 #include <boost/type_index.hpp>
 #include <boost/optional.hpp>
@@ -220,9 +221,9 @@ TEST(JsonObject, foreach){
         }
 }
 TEST(JsonObject, maker){
-        Detail::JsonObjectMaker m;
+        JsonObjectMaker m;
         auto iter = json_sample_text.begin(), end = json_sample_text.end();
-        basic_parser<Detail::JsonObjectMaker,decltype(iter)> p(m,iter, end);
+        basic_parser<JsonObjectMaker,decltype(iter)> p(m,iter, end);
         p.parse();
         auto ret = m.make();
         JsonObject::debug_visitor dbg;

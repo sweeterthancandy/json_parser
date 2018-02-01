@@ -781,7 +781,7 @@ struct JsonObject{
                 }
         }
 
-        inline void Parse(std::string const& s);
+        void Parse(std::string const& s);
 private:
         Type type_;
         union {
@@ -1307,6 +1307,10 @@ void JsonObject::Display(std::ostream& ostr, unsigned indent)const{
 std::string JsonObject::ToString()const{
         std::stringstream sstr;
         Detail::RenderContext ctx(Detail::RenderContext::Config_SingleLine, sstr);
+
+
+
+
         Detail::GraphVisitor v;
         this->Accept(v);
         v.Optmize();
@@ -1317,11 +1321,11 @@ std::string JsonObject::ToString()const{
 namespace Detail{
         struct ArrayType{
                 template<class... Args>
-                JsonObject operator()(Args&&... args)const{
-                        JsonObject obj(JsonObject::Tag_Array{});
-                        int aux[] = {0, ( obj.push_back_unchecked( args), 0 )... };
-                        return obj;
-                }
+                        JsonObject operator()(Args&&... args)const{
+                                JsonObject obj(JsonObject::Tag_Array{});
+                                int aux[] = {0, ( obj.push_back_unchecked( args), 0 )... };
+                                return obj;
+                        }
                 using IAmAnEmptyArray = int;
         };
         struct MapType{
@@ -1330,11 +1334,11 @@ namespace Detail{
                                 vec_.reserve(128);
                         }
                         template<class Key, class Value>
-                        Impl operator()(Key&& key, Value&& value){
-                                vec_.emplace_back(std::forward<Key>(key));
-                                vec_.emplace_back(std::forward<Value>(value));
-                                return *this;
-                        }
+                                Impl operator()(Key&& key, Value&& value){
+                                        vec_.emplace_back(std::forward<Key>(key));
+                                        vec_.emplace_back(std::forward<Value>(value));
+                                        return *this;
+                                }
                         operator JsonObject const()const{
                                 return ToJsonObject();
                         }
@@ -1350,10 +1354,10 @@ namespace Detail{
                         std::vector< JsonObject> vec_;
                 };
                 template<class Key, class Value>
-                Impl operator()(Key&& key, Value&& value)const{
-                        Impl impl;
-                        return impl(std::forward<Key>(key), std::forward<Value>(value));
-                }
+                        Impl operator()(Key&& key, Value&& value)const{
+                                Impl impl;
+                                return impl(std::forward<Key>(key), std::forward<Value>(value));
+                        }
                 operator JsonObject const()const{
                         JsonObject obj(JsonObject::Tag_Map{});
                         return obj;
@@ -1361,95 +1365,6 @@ namespace Detail{
                 using IAmAnEmptyMap = int;
         };
 } // Defailt
-
-
-
-namespace Detail{
-        struct JsonObjectMaker{
-
-                struct StackFrame{
-                        JsonObject object;
-                        // only for when we have a map, get need to save the key first
-                        std::vector<JsonObject> param_stack_;
-                };
-
-
-                void begin_map(){
-                        StackFrame frame;
-                        frame.object = JsonObject{JsonObject::Tag_Map{}};
-                        stack_.emplace_back(std::move(frame));
-                } 
-                void end_map(){
-                        end_any_();
-                }
-                void begin_array(){
-                        StackFrame frame;
-                        frame.object = JsonObject{JsonObject::Tag_Array{}};
-                        stack_.emplace_back(std::move(frame));
-                } 
-                void end_array(){
-                        end_any_();
-                } 
-                void make_string(std::string const& value){
-                        add_any_( JsonObject{value});
-                }
-                void make_int(std::int64_t value){
-                        add_any_( JsonObject{value});
-                }
-                void make_float(long double value){
-                        add_any_( JsonObject{value});
-                }
-                void make_null(){
-                        //add_any_( JsonObject{JsonObject::Tag_Nil{}});
-                }
-                void make_true(){
-                        add_any_( JsonObject{true} );
-                }
-                void make_false(){
-                        add_any_( JsonObject{false} );
-                }
-                JsonObject make(){ 
-                        JsonObject tmp = std::move(out_.back());
-                        out_.pop_back();
-                        return tmp;
-                } 
-        private:
-                void add_any_(JsonObject&& obj){
-                        if( stack_.back().object.GetType() == Type_Array ){
-                                stack_.back().object.push_back_unchecked( obj );
-                        } else if( stack_.back().object.GetType() == Type_Map ){
-                                if( stack_.back().param_stack_.empty() ){
-                                        // this must be the key, save it because we 
-                                        // need to add key/value pair atomically
-                                        stack_.back().param_stack_.push_back(obj);
-                                } else{
-                                        stack_.back().object.emplace_unchecked( 
-                                                std::move( stack_.back().param_stack_.back()),
-                                                std::move( obj ) );
-                                        stack_.back().param_stack_.pop_back();
-                                }
-                        } else{
-                                throw std::domain_error("unexpcted");
-                        }
-                }
-                void end_any_(){
-                        if( stack_.back().param_stack_.size() != 0 )
-                                throw std::domain_error("not an even number of args");
-                        auto last = std::move(stack_.back());
-                        stack_.pop_back();
-                        if( stack_.empty() ){
-                                out_.push_back(std::move(last.object));
-                                return;
-                        }
-
-                        add_any_( std::move( last.object) );
-                } 
-                std::vector<StackFrame> stack_;
-                std::vector<JsonObject> out_;
-        };
-        
-}
-
 // theese are per translation unit
 namespace{
         Detail::ArrayType Array = {};
@@ -1457,14 +1372,6 @@ namespace{
 }
 
 
-inline void JsonObject::Parse(std::string const& s){
-        Detail::JsonObjectMaker m;
-        auto iter = s.begin(), end = s.end();
-        basic_parser<Detail::JsonObjectMaker,decltype(iter)> p(m,iter, end);
-        p.parse();
-        auto ret = m.make();
-        *this = ret;
-}
 
 } // json_parser
 
