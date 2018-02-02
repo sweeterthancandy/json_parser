@@ -355,3 +355,22 @@ TEST(JsonObject, AsBool){
         EXPECT_ANY_THROW( obj[4].AsBool());
 
 }
+
+TEST(JsonObject, unquotedKey){
+        JsonObject obj;
+        EXPECT_NO_THROW( obj.Parse(R"(
+        { "mid": '9323.55',
+          bid: '9323.1',
+          ask: '9324.0',
+          last_price: '9324.0',
+          low: '8941.0',
+          high: '10336.0',
+          volume: '78049.66409636',
+          timestamp: '1517523082.6140294' }
+)"));
+        obj.Display();
+
+        EXPECT_EQ(8, obj.size());
+        EXPECT_NEAR(9323.55, obj["mid"].AsFloat(), 0.000000001 );
+        EXPECT_NEAR(1517523082.6140294, obj["timestamp"].AsFloat(), 0.000000001 );
+}

@@ -189,6 +189,7 @@ namespace gjson{
                                 case ']': ++state_.first_; return token(token_type::right_br  ,"]");
                                 case ',': ++state_.first_; return token(token_type::comma     ,",");
                                 case ':': ++state_.first_; return token(token_type::colon     ,":");
+
                                 case '"':{
                                         auto iter = state_.first_;
                                         ++iter;
@@ -197,6 +198,21 @@ namespace gjson{
                                                         TOKENIZER_ERROR("unterminated string");
                                         }
                                         assert( *iter == '"');
+                                        token tmp(token_type::string_,
+                                                std::string(
+                                                        std::next(state_.first_),
+                                                        iter));
+                                        state_.first_ = std::next(iter);
+                                        return tmp;
+                                }
+                                case '\'':{
+                                        auto iter = state_.first_;
+                                        ++iter;
+                                        for(;*iter != '\'';++iter){
+                                                if( iter == state_.last_)
+                                                        TOKENIZER_ERROR("unterminated string");
+                                        }
+                                        assert( *iter == '\'');
                                         token tmp(token_type::string_,
                                                 std::string(
                                                         std::next(state_.first_),
@@ -274,7 +290,8 @@ namespace gjson{
                                                 )
                                         ));
                                 sstr << ")";
-                                BOOST_THROW_EXCEPTION(std::domain_error(sstr.str()));
+                                std::string msg = sstr.str();
+                                BOOST_THROW_EXCEPTION(std::domain_error(msg));
                         }
                 }
         private:

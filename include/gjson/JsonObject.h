@@ -405,9 +405,25 @@ struct JsonObject{
                 }
         }
         auto AsFloat()const{
-                if( type_ == Type_Float )
+                switch(type_){
+                case Type_Float:
                         return as_float_;
+                case Type_Integer:
+                        return static_cast<double>(as_int_);
+                case Type_String:
+                        {
+                                std::stringstream sstr;
+                                sstr << as_string_;
+                                double result;
+                                sstr >> result;
+                                if( sstr.eof() && sstr ){
+                                        return result;
+                                }
+                                throw std::domain_error("bad cast");
+                        }
+                default:
                 ThrowCastError_("not an float");
+                }
         }
         auto AsBool()const{
                 switch(type_){
