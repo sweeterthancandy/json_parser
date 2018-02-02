@@ -179,10 +179,20 @@ TEST(JsonObject, FrontendArray){
 
 TEST(JsonObject, FrontendMap){
 
-        JsonObject m = Map("one",1)(2, "two");
-        EXPECT_EQ( 2, m.size() );
+        JsonObject m = Map("one",1)(2, "two")(12.34, 12.34)(true,true)
+                .Debug();
+
+        EXPECT_EQ( 4, m.size() );
+
         EXPECT_TRUE( m["one"] == 1 );
         EXPECT_TRUE( m[2] == "two" );
+
+        EXPECT_EQ( Type_Integer, m["one"].GetType() );
+        EXPECT_EQ( Type_String,  m[2].GetType() );
+        EXPECT_EQ( Type_Float,   m[12.34].GetType() );
+        EXPECT_EQ( Type_Bool,   m[true].GetType() );
+
+        
 }
 
 TEST(JsonObject, simple){
@@ -225,9 +235,6 @@ TEST(JsonObject, maker){
         basic_parser<JsonObjectMaker,decltype(iter)> p(m,iter, end);
         p.parse();
         auto ret = m.make();
-        JsonObject::debug_visitor dbg;
-        ret.Accept(dbg);
-        std::cout << ret << "\n";
 }
 
 TEST(JsonObject, access){
@@ -287,4 +294,64 @@ TEST(JsonObject, Assign){
         EXPECT_EQ(3, obj["one_to_three"][2].AsInteger() );
         EXPECT_EQ(1, obj[45.5]["one"].AsInteger());
         EXPECT_EQ("two", obj[45.5][2].AsString());
+
+}
+TEST(JsonObject, HasKey){
+        JsonObject obj = Array(
+                Map("one", 1)
+                   (45, 2)
+                   (true, 3)
+                   (12.23,4),
+                Array,
+                23,
+                false);
+
+        EXPECT_EQ( 4, obj.size() );
+        EXPECT_EQ( 4, obj[0].size() );
+
+        obj.Debug();
+        #if 0
+        obj[0][true].Debug();
+        #endif
+
+        EXPECT_TRUE( obj.HasKey(0) );
+        EXPECT_TRUE( obj.HasKey(3) );
+        EXPECT_FALSE( obj.HasKey(-1) );
+        EXPECT_FALSE( obj.HasKey(5) );
+
+
+        EXPECT_TRUE( obj[0].HasKey("one") );
+        EXPECT_TRUE( obj[0].HasKey(45) );
+        EXPECT_TRUE( obj[0].HasKey(true) );
+        EXPECT_TRUE( obj[0].HasKey(12.23) );
+
+        EXPECT_FALSE(obj[0].HasKey(100) );
+}
+
+TEST(JsonObject, KeyDoesntExist){
+        JsonObject obj;
+        JsonObject const& cobj{obj};
+
+        EXPECT_ANY_THROW( cobj["key"].GetType());
+        EXPECT_EQ( Type_Map, obj["key"].GetType());
+}
+
+TEST(JsonObject, AsBool){
+        JsonObject obj;
+
+        EXPECT_NO_THROW(
+                obj.Parse(R"( { 0:true  ,  1  :false,  2:1,  3:0, 4:"something_else" } )")
+        );
+
+        obj.Debug();
+        obj[0].Debug();
+
+        
+
+        EXPECT_EQ( true,  obj[0].AsBool() );
+        EXPECT_EQ( false, obj[1].AsBool() );
+        EXPECT_EQ( true,  obj[2].AsBool() );
+        EXPECT_EQ( false, obj[3].AsBool() );
+        EXPECT_ANY_THROW( obj[4].AsBool());
+
 }

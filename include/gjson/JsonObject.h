@@ -379,6 +379,12 @@ struct JsonObject{
                 return *this;
         }
 
+        [[noreturn]]
+        void ThrowCastError_(std::string const& msg)const{
+                std::stringstream sstr;
+                sstr << msg << "(" << Type() << ", " << ToString();
+                throw std::domain_error(sstr.str());
+        }
         auto AsInteger()const{
                 switch(type_){
                 case Type_Integer:
@@ -392,31 +398,31 @@ struct JsonObject{
                                 if( sstr.eof() && sstr ){
                                         return result;
                                 }
-                                throw std::domain_error("bad cast");
+                                ThrowCastError_("bad cast");
                         }
                 default:
-                        throw std::domain_error("not an integer");
+                        ThrowCastError_("not an integer");
                 }
         }
         auto AsFloat()const{
                 if( type_ == Type_Float )
                         return as_float_;
-                throw std::domain_error("not an float");
+                ThrowCastError_("not an float");
         }
         auto AsBool()const{
                 if( type_ == Type_Bool )
                         return as_bool_;
-                throw std::domain_error("not an bool");
+                ThrowCastError_("not an bool");
         }
         auto const& AsString()const{
                 if( type_ == Type_String )
                         return as_string_;
-                throw std::domain_error("not an string");
+                ThrowCastError_("not an string");
         }
         template<class Value>
         void push_back(Value&& val){
                 if( type_ != Type_Array )
-                        throw std::domain_error("not a array");
+                        ThrowCastError_("not a array");
                 this->push_back_unchecked(std::forward<Value>(val));
         }
         template<class Value>
@@ -426,7 +432,7 @@ struct JsonObject{
         template<class Key, class Value>
         void emplace(Key&& key, Value&& val){
                 if( type_ != Type_Map )
-                        throw std::domain_error("not a map");
+                        ThrowCastError_("not a map");
                 this->emplace_unchecked(std::forward<Key>(key), std::forward<Value>(val));
         }
         template<class Key, class Value>
@@ -440,65 +446,121 @@ struct JsonObject{
                 case Type_Map:
                         return as_map_.size();
                 default:
-                        throw std::domain_error("not sizeable");
+                        ThrowCastError_("not sizeable");
                 }
         }
 
+private:
+        struct HasKeyPolicy{
+                using return_type = bool;
+                // this is called then the key isn't found
+                void MaybeThrow(std::string const& msg){
+                }
+                // then the key is found
+                bool Return( JsonObject const* ptr){
+                        return true;
+                }
+                bool ReturnDefaultKey( JsonObject const* ptr, JsonObject const& key){
+                        return false;
+                }
+        };
+        struct ConstLookupPolicy{
+                using return_type = JsonObject const*;
+                void MaybeThrow(std::string const& msg){
+                        throw std::domain_error(msg);
+                }
+                JsonObject const* Return( JsonObject const* ptr){
+                        return ptr;
+                }
+                JsonObject const* ReturnDefaultKey( JsonObject const* ptr, JsonObject const& key){
+                        __builtin_unreachable();
+                }
+        };
+        struct MutableLookupPolicy{
+                using return_type = JsonObject const*;
+                void MaybeThrow(std::string const& msg){
+                }
+                JsonObject const* Return( JsonObject const* ptr){
+                        return ptr;
+                }
+                JsonObject const* ReturnDefaultKey( JsonObject const* ptr, JsonObject const& key){
+                        JsonObject* self = const_cast<JsonObject*>(ptr);
+                        switch(ptr->GetType()){
+                        case Type_Map:
+                                return &self->as_map_[key];
+                        default:
+                                throw std::domain_error("not sure what to do");
+                        } 
+                }
+        };
+        friend struct LookupPolicy;
+public:
 
-        template<class Key>
-        std::enable_if_t< std::is_integral<std::decay_t<Key> >::value, JsonObject& >
-        operator[](Key key){
-                if( type_ ==  Type_Array ){
-                        return as_array_.at(static_cast<typename array_type::size_type>(key));
-                } else if( type_ == Type_Map ){
-                        std::int64_t casted = static_cast<std::int64_t>(key);
-                        JsonObject mapped(casted);
-                        return as_map_[mapped];
+        template<class Policy, class Key>
+        typename std::decay_t<Policy>::return_type
+        ExecuteLookup_(Detail::precedence_device<0>&&, Policy&& p, Key key)const{
+                if( type_ == Type_Map ){
+                        JsonObject casted{key};
+                        auto iter = as_map_.find(casted);
+                        if( iter != as_map_.end() ){
+                                return p.Return(&iter->second);
+                        }
+                        p.MaybeThrow( "don't have key");
+                        return p.ReturnDefaultKey( this, casted);
                 } else {
-                        throw std::domain_error("not a map or array");
+                        ThrowCastError_("not a map");
+                        __builtin_unreachable();
                 }
         }
-        template<class Key>
-        std::enable_if_t< std::is_integral<std::decay_t<Key> >::value, JsonObject const& >
-        operator[](Key key)const{
+        template<class Policy, class Key>
+        std::enable_if_t< std::is_integral<std::decay_t<Key> >::value, typename std::decay_t<Policy>::return_type >
+        ExecuteLookup_(Detail::precedence_device<1>&&, Policy&& p, Key key)const{
                 if( type_ ==  Type_Array ){
-                        return as_array_.at(static_cast<typename array_type::size_type>(key));
+                        auto idx = static_cast<typename array_type::size_type>(key);
+                        if(  0 <= key && idx < as_array_.size() ){
+                                return p.Return( &as_array_.at(idx) );
+                        }
+                        p.MaybeThrow( "out of range");
+                        return p.ReturnDefaultKey( this, idx);
                 } else if( type_ == Type_Map ){
                         std::int64_t casted = static_cast<std::int64_t>(key);
-                        JsonObject mapped(casted);
+                        JsonObject tmp(casted);
                         // unlike the non-const version, we don't create keys
                         // on demand
-                        auto iter = as_map_.find(mapped);
-                        if( iter != as_map_.end() )
-                                return iter->second;
-                        throw std::domain_error("can't find key");
-                } else {
-                        throw std::domain_error("not a map or array");
-                }
-        }
-        template<class Key>
-        std::enable_if_t< ! std::is_integral<std::decay_t<Key> >::value, JsonObject& >
-        operator[](Key key){
-                if( type_ == Type_Map ){
-                        JsonObject tmp{key};
-                        return as_map_[tmp];
-                } else {
-                        throw std::domain_error("not a map or array");
-                }
-        }
-        template<class Key>
-        std::enable_if_t< ! std::is_integral<std::decay_t<Key> >::value, JsonObject const& >
-        operator[](Key key)const{
-                if( type_ == Type_Map ){
-                        JsonObject tmp{key};
                         auto iter = as_map_.find(tmp);
-                        if( iter != as_map_.end() )
-                                return iter->second;
-                        throw std::domain_error("can't find key");
+                        if( iter != as_map_.end() ){
+                                return p.Return(&iter->second);
+                        }
+                        p.MaybeThrow( "don't have key");
+                        return p.ReturnDefaultKey( this, casted);
                 } else {
-                        throw std::domain_error("not a map or array");
+                        ThrowCastError_("not a map or array");
+                        __builtin_unreachable();
                 }
         }
+        template<class Policy, class Key>
+        std::enable_if_t< std::is_same<std::decay_t<Key>, bool >::value, typename std::decay_t<Policy>::return_type >
+        ExecuteLookup_(Detail::precedence_device<2>&&, Policy&& p, Key key)const{
+                return ExecuteLookup_( Detail::precedence_device<0>{}, p, std::forward<Key>(key));
+        }
+
+        template<class Key>
+        JsonObject const& operator[](Key&& key)const{
+                auto ret =  ExecuteLookup_( Detail::precedence_device<2>{}, ConstLookupPolicy{}, key);
+                return *ret;
+        }
+        template<class Key>
+        JsonObject& operator[](Key&& key){
+                auto ret = ExecuteLookup_( Detail::precedence_device<2>{},  MutableLookupPolicy{}, key);
+                return *const_cast<JsonObject*>(ret);
+        }
+        template<class Key>
+        bool HasKey(Key&& key)const{
+                auto ret = ExecuteLookup_( Detail::precedence_device<2>{},  HasKeyPolicy{}, key);
+                return ret;
+        }
+
+
 
 
         Type GetType()const{ return type_; }
@@ -582,46 +644,6 @@ struct JsonObject{
         };
 
 
-        struct debug_visitor : visitor{
-                void on_nil()override{
-                        std::cout << make_indent_() << "on_nil()\n";
-                }
-                void on_bool(bool value)override{
-                        std::cout << make_indent_() << "on_bool(" << value << ")\n";
-                }
-                void on_integer(std::int64_t value)override{
-                        std::cout << make_indent_() << "on_integer(" << value << ")\n";
-                }
-                void on_float(double value)override{
-                        std::cout << make_indent_() << "on_float(" << value << ")\n";
-                }
-                void on_string(std::string const& value)override{
-                        std::cout << make_indent_() << "on_string(" << value << ")\n";
-                }
-                VisitorCtrl begin_array(size_t n)override{
-                        std::cout << make_indent_() << "begin_array(" << n << ")\n";
-                        ++indent_;
-                        return VisitorCtrl_Decend;
-                }
-                void end_array()override{
-                        --indent_;
-                        std::cout << make_indent_() << "end_array()\n";
-                }
-                VisitorCtrl begin_map(size_t n)override{
-                        std::cout << make_indent_() << "begin_map(" << n << ")\n";
-                        ++indent_;
-                        return VisitorCtrl_Decend;
-                }
-                void end_map()override{
-                        --indent_;
-                        std::cout << make_indent_() << "end_map()\n";
-                }
-        private:
-                std::string make_indent_()const{
-                        return std::string(indent_*4,' ');
-                }
-                unsigned indent_{0};
-        };
         bool IsPrimitive()const{ 
                 return Begin_Primitive <= GetType() && 
                         GetType() < End_Primitive;
@@ -734,14 +756,18 @@ struct JsonObject{
         void Display(std::ostream& ostr = std::cout, unsigned indent = 0)const;
         // single line
         std::string ToString()const;
+        std::string ToDebugString()const;
 
         friend std::ostream& operator<<(std::ostream& ostr, JsonObject const& self){
                 return ostr << self.ToString();
         }
+        void Debug()const;
+        #if 0
         void Debug()const{
                 std::cout << "{type=" << Type_to_string(type_) 
                         << ", <data>=" << to_string() << "}\n";
         }
+        #endif
 
 
         const_iterator begin()const{
@@ -829,6 +855,16 @@ namespace Detail{
                                                                std::move( vec_[idx+1] ) );
                                 }
                                 return obj;
+                        }
+                        Impl& Debug(){
+                                std::cerr << "{";
+                                const char* comma = "";
+                                for(auto const& _ : vec_){
+                                        std::cerr << comma << _.ToString();
+                                        comma = ", ";
+                                }
+                                std::cerr << "}\n";
+                                return *this;
                         }
                 private:
                         std::vector< JsonObject> vec_;

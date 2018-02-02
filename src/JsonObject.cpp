@@ -515,6 +515,49 @@ namespace Detail{
                 }
                 std::list<Detail::GVStackFrame*> stack_;
         };
+
+        struct debug_visitor : JsonObject::visitor{
+                explicit debug_visitor(std::ostream& ostr):ostr_{&ostr}{}
+                void on_nil()override{
+                        *ostr_ << make_indent_() << "on_nil()\n";
+                }
+                void on_bool(bool value)override{
+                        *ostr_ << make_indent_() << "on_bool(" << value << ")\n";
+                }
+                void on_integer(std::int64_t value)override{
+                        *ostr_ << make_indent_() << "on_integer(" << value << ")\n";
+                }
+                void on_float(double value)override{
+                        *ostr_ << make_indent_() << "on_float(" << value << ")\n";
+                }
+                void on_string(std::string const& value)override{
+                        *ostr_ << make_indent_() << "on_string(" << value << ")\n";
+                }
+                VisitorCtrl begin_array(size_t n)override{
+                        *ostr_ << make_indent_() << "begin_array(" << n << ")\n";
+                        ++indent_;
+                        return VisitorCtrl_Decend;
+                }
+                void end_array()override{
+                        --indent_;
+                        *ostr_ << make_indent_() << "end_array()\n";
+                }
+                VisitorCtrl begin_map(size_t n)override{
+                        *ostr_ << make_indent_() << "begin_map(" << n << ")\n";
+                        ++indent_;
+                        return VisitorCtrl_Decend;
+                }
+                void end_map()override{
+                        --indent_;
+                        *ostr_ << make_indent_() << "end_map()\n";
+                }
+        private:
+                std::string make_indent_()const{
+                        return std::string(indent_*4,' ');
+                }
+                std::ostream* ostr_;
+                unsigned indent_{0};
+        };
 } // Detail
 void JsonObject::Display(std::ostream& ostr, unsigned indent)const{
         Detail::RenderContext ctx(Detail::RenderContext::Config_Pretty, ostr);
@@ -528,15 +571,15 @@ void JsonObject::Display(std::ostream& ostr, unsigned indent)const{
 std::string JsonObject::ToString()const{
         std::stringstream sstr;
         Detail::RenderContext ctx(Detail::RenderContext::Config_SingleLine, sstr);
-
-
-
-
         Detail::GraphVisitor v;
         this->Accept(v);
         v.Optmize();
         v.Render(ctx);
         return sstr.str();
+}
+void JsonObject::Debug()const{
+        Detail::debug_visitor v(std::cout);
+        this->Accept(v);
 }
 
 } // gjson
