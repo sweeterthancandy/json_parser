@@ -410,9 +410,14 @@ struct JsonObject{
                 ThrowCastError_("not an float");
         }
         auto AsBool()const{
-                if( type_ == Type_Bool )
+                switch(type_){
+                case Type_Bool:
                         return as_bool_;
-                ThrowCastError_("not an bool");
+                case Type_Integer:
+                        return as_int_ != static_cast<decltype(as_int_)>(0);
+                default:
+                        ThrowCastError_("not an bool");
+                }
         }
         auto const& AsString()const{
                 if( type_ == Type_String )

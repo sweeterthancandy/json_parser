@@ -254,12 +254,15 @@ namespace gjson{
                                                 break;
                                         }
                                 }
-                                token tmp(token_type::string_,
-                                        std::string(
-                                                state_.first_,
-                                                iter));
+                                std::string s( state_.first_, iter);
                                 state_.first_ = iter;
-                                return tmp;
+                                if( s == "true" ){
+                                        return token(token_type::true_, std::move(s));
+                                }
+                                if( s == "false" ){
+                                        return token(token_type::false_, std::move(s));
+                                }
+                                return token(token_type::string_, std::move(s));
                         } else{
                                 std::stringstream sstr;
                                 sstr << "unregognized sequence of chars (";
