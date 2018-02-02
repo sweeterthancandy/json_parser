@@ -374,3 +374,14 @@ TEST(JsonObject, unquotedKey){
         EXPECT_NEAR(9323.55, obj["mid"].AsFloat(), 0.000000001 );
         EXPECT_NEAR(1517523082.6140294, obj["timestamp"].AsFloat(), 0.000000001 );
 }
+
+TEST(JsonObject, loop_nonexistent_key){
+        EXPECT_ANY_THROW( [](){
+                const JsonObject obj;
+                for( auto const& _ : obj["notakey"]){}
+        }());
+        EXPECT_NO_THROW( [](){
+                JsonObject obj;
+                for( auto const& _ : obj["notakey"]){}
+        }());
+}
