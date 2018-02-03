@@ -374,3 +374,35 @@ TEST(JsonObject, unquotedKey){
         EXPECT_NEAR(9323.55, obj["mid"].AsFloat(), 0.000000001 );
         EXPECT_NEAR(1517523082.6140294, obj["timestamp"].AsFloat(), 0.000000001 );
 }
+
+TEST(JsonObject, loop_nonexistent_key){
+        EXPECT_ANY_THROW( [](){
+                const JsonObject obj;
+                for( auto const& _ : obj["notakey"]){}
+        }());
+        EXPECT_NO_THROW( [](){
+                JsonObject obj;
+                for( auto const& _ : obj["notakey"]){}
+        }());
+}
+
+TEST(JsonObject, complex_){
+        auto msg = R"(
+{"source":"Bitfinex","feed":"OrderBook","symbol":"BTCUSD","timestamp":1517600261754,"payload":{"bids":[{"price":"8687.1","amount":"0.05382908","timestamp":"1517600258.0"},{"price":"8687","amount":"7.7633","timestamp":"1517600258.0"},{"price":"8686.1","amount":"0.45","timestamp":"1517600258.0"},{"price":"8684.7","amount":"0.1","timestamp":"1517600258.0"},{"price":"8676.5","amount":"0.8","timestamp":"1517600258.0"},{"price":"8675","amount":"21.349","timestamp":"1517600258.0"},{"price":"8674.7","amount":"0.03213085","timestamp":"1517600258.0"},{"price":"8674","amount":"0.57370266","timestamp":"1517600258.0"},{"price":"8668.3","amount":"1","timestamp":"1517600258.0"},{"price":"8668","amount":"13.5857","timestamp":"1517600258.0"},{"price":"8667.1","amount":"16.73267539","timestamp":"1517600258.0"},{"price":"8666.7","amount":"0.1","timestamp":"1517600258.0"},{"price":"8666","amount":"4.89","timestamp":"1517600258.0"},{"price":"8665","amount":"11.6698","timestamp":"1517600258.0"},{"price":"8662.1","amount":"0.7","timestamp":"1517600258.0"},{"price":"8661.7","amount":"0.053","timestamp":"1517600258.0"},{"price":"8659","amount":"4","timestamp":"1517600258.0"},{"price":"8658.7","amount":"0.12544259","timestamp":"1517600258.0"},{"price":"8658.1","amount":"0.022","timestamp":"1517600258.0"},{"price":"8657.6","amount":"0.105","timestamp":"1517600258.0"},{"price":"8656.6","amount":"0.0888","timestamp":"1517600258.0"},{"price":"8656.2","amount":"0.2","timestamp":"1517600258.0"},{"price":"8656","amount":"0.6","timestamp":"1517600258.0"},{"price":"8653.9","amount":"4.587","timestamp":"1517600258.0"},{"price":"8653.1","amount":"0.08","timestamp":"1517600258.0"}],"asks":[{"price":"8692","amount":"0.11472158","timestamp":"1517600258.0"},{"price":"8692.9","amount":"0.01","timestamp":"1517600258.0"},{"price":"8693.3","amount":"0.29968911","timestamp":"1517600258.0"},{"price":"8693.4","amount":"0.277","timestamp":"1517600258.0"},{"price":"8696","amount":"0.2","timestamp":"1517600258.0"},{"price":"8696.9","amount":"1.70721514","timestamp":"1517600258.0"},{"price":"8698.8","amount":"0.13254636","timestamp":"1517600258.0"},{"price":"8699.5","amount":"0.19078428","timestamp":"1517600258.0"},{"price":"8699.6","amount":"1","timestamp":"1517600258.0"},{"price":"8700.9","amount":"0.06165963","timestamp":"1517600258.0"},{"price":"8701","amount":"0.50733396","timestamp":"1517600258.0"},{"price":"8701.4","amount":"0.05912052","timestamp":"1517600258.0"},{"price":"8701.9","amount":"0.06697297","timestamp":"1517600258.0"},{"price":"8702","amount":"1","timestamp":"1517600258.0"},{"price":"8703","amount":"0.0073442","timestamp":"1517600258.0"},{"price":"8710","amount":"1.37029583","timestamp":"1517600258.0"},{"price":"8712","amount":"4","timestamp":"1517600258.0"},{"price":"8713.3","amount":"2","timestamp":"1517600258.0"},{"price":"8715","amount":"8.4","timestamp":"1517600258.0"},{"price":"8716","amount":"0.4","timestamp":"1517600258.0"},{"price":"8717","amount":"4.7","timestamp":"1517600258.0"},{"price":"8718.2","amount":"0.1","timestamp":"1517600258.0"},{"price":"8719.8","amount":"0.02","timestamp":"1517600258.0"},{"price":"8720","amount":"0.4","timestamp":"1517600258.0"},{"price":"8721.2","amount":"0.1","timestamp":"1517600258.0"}]}}
+)";
+        JsonObject obj;
+        EXPECT_NO_THROW( obj.Parse(msg) );
+
+}
+
+TEST(JsonObject, AsString){
+        auto obj = Array("one", 1, -34.4, true, Array, Map);
+
+        EXPECT_EQ( "one", obj[0].AsString());
+        EXPECT_EQ( "1", obj[1].AsString());
+        // XXX visually inspect this
+        //EXPECT_EQ( "-34.4", obj[2].AsString());
+        EXPECT_EQ( "True", obj[3].AsString());
+        EXPECT_ANY_THROW( obj[4].AsString());
+        EXPECT_ANY_THROW( obj[5].AsString());
+}

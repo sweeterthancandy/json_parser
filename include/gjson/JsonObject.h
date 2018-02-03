@@ -10,6 +10,7 @@
 #include <vector>
 #include <iterator>
 
+#include <boost/lexical_cast.hpp>
 
 namespace gjson{
 
@@ -448,10 +449,35 @@ struct JsonObject{
                         ThrowCastError_("not an bool");
                 }
         }
-        std::string const& AsString()const{
-                if( type_ == Type_String )
+        std::string AsString()const{
+                #if 0
+                auto caster = [](auto prim){
+                        std::string str;
+                        std::stringstream sstr;
+                        sstr << std::fixed;
+                        sstr << prim;
+                        sstr >> str;
+                        return str;
+                };
+                #endif
+                switch(type_){
+                case Type_String:
                         return as_string_;
-                ThrowCastError_("not an string");
+                case Type_Float:
+                        return boost::lexical_cast<std::string>(as_float_);
+                case Type_Integer:
+                        return boost::lexical_cast<std::string>(as_int_);
+                case Type_Bool:
+                        return ( as_bool_ ? "True" : "False" );
+                // these are errors, idea is that these could be slow options,
+                // and these should be done with ToString()
+                case Type_Map:
+                        ThrowCastError_("Use ToString() to convert Map to string");
+                case Type_Array:
+                        ThrowCastError_("Use ToString() to convert List to string");
+                default:
+                        ThrowCastError_("unhandles");
+                }
         }
         template<class Value>
         void push_back(Value&& val){
