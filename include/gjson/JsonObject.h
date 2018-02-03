@@ -2,6 +2,7 @@
 #define JSON_PARSER_JSONOBJECT_H
 
 #include <cassert>
+#include <string>
 #include <list>
 #include <sstream>
 #include <map>
@@ -9,7 +10,19 @@
 #include <vector>
 #include <iterator>
 
+
 namespace gjson{
+
+namespace tt{
+        template< bool B, class T, class F >
+        using conditional_t = typename std::conditional<B,T,F>::type;
+        template< bool B, class T = void >
+        using enable_if_t = typename std::enable_if<B,T>::type;
+        template< class T >
+        using decay_t = typename std::decay<T>::type;
+        template< class T >
+        using remove_cv_t = typename std::remove_cv<T>::type;
+} // std
 
 namespace Detail{
         template<unsigned Order>
@@ -91,19 +104,19 @@ struct JsonObject{
         struct basic_iterator : std::iterator<std::forward_iterator_tag, JsonObject>{
                 using IterTag_Array = std::integral_constant<IteratorType, IteratorType_Array>;
                 using IterTag_Map   = std::integral_constant<IteratorType, IteratorType_Map>;
-                using array_iter_type = std::conditional_t<is_constant,
+                using array_iter_type = tt::conditional_t<is_constant,
                       typename array_type::const_iterator,
                       typename array_type::iterator
                 >;
-                using map_iter_type = std::conditional_t<is_constant,
+                using map_iter_type = tt::conditional_t<is_constant,
                       typename map_type::const_iterator,
                       typename map_type::iterator
                 >;
-                using ptr_type = std::conditional_t<
+                using ptr_type = tt::conditional_t<
                         is_constant,
                         JsonObject const*,
                         JsonObject *>;
-                using ref_type = std::conditional_t<
+                using ref_type = tt::conditional_t<
                         is_constant,
                         JsonObject const&,
                         JsonObject&>;
@@ -243,68 +256,68 @@ struct JsonObject{
         void AssignImpl( Detail::precedence_device<0>, Value&& val)
         {
                 std::cout << "val = " << boost::typeindex::type_id_with_cvr<Value>() << "\n";
-                std::cout << "val = " << boost::typeindex::type_id_with_cvr< std::remove_cv_t<std::decay_t<Value> > >() << "\n";
+                std::cout << "val = " << boost::typeindex::type_id_with_cvr< tt::remove_cv_t<tt::decay_t<Value> > >() << "\n";
                 throw std::domain_error("not a known type");
         }
         #endif
         template<class Value>
-        std::enable_if_t< std::is_same<std::decay_t<Value>, Tag_Array >::value > 
+        tt::enable_if_t< std::is_same<tt::decay_t<Value>, Tag_Array >::value > 
         AssignImpl( Detail::precedence_device<3>, Value&& val){
                 DoAssign(Tag_Array{});
         }
         template<class Value>
-        std::enable_if_t< std::is_same<std::remove_cv_t<std::decay_t<Value> >, Tag_Map >::value > 
+        tt::enable_if_t< std::is_same<tt::remove_cv_t<tt::decay_t<Value> >, Tag_Map >::value > 
         AssignImpl( Detail::precedence_device<4>, Value&& val){
                 DoAssign(Tag_Map{});
         }
         template<class Value>
-        std::enable_if_t< ! std::is_same<decltype( std::declval<Value>().ToJsonObject() ), void >::value >
+        tt::enable_if_t< ! std::is_same<decltype( std::declval<Value>().ToJsonObject() ), void >::value >
         AssignImpl( Detail::precedence_device<5>, Value&& val){
                 // XXX is this right?
                 Assign(val.ToJsonObject());
         }
         template<class Value>
-        std::enable_if_t< std::is_constructible<std::string,Value>::value >
+        tt::enable_if_t< std::is_constructible<std::string,Value>::value >
         AssignImpl( Detail::precedence_device<6>, Value&& val){
                 DoAssign( Tag_String{}, std::forward<Value>(val));
         }
         template<class Value>
-        std::enable_if_t< std::is_same<std::decay_t<Value>, std::string >::value >
+        tt::enable_if_t< std::is_same<tt::decay_t<Value>, std::string >::value >
         AssignImpl( Detail::precedence_device<7>, Value&& val){
                 DoAssign( Tag_String{}, std::forward<Value>(val) );
         }
         template<class Value>
-        std::enable_if_t< std::is_floating_point<std::decay_t<Value> >::value >
+        tt::enable_if_t< std::is_floating_point<tt::decay_t<Value> >::value >
         AssignImpl( Detail::precedence_device<8>, Value&& val){
                 DoAssign( Tag_Float{}, static_cast<double>(val) );
         }
         template<class Value>
-        std::enable_if_t< std::is_integral<std::decay_t<Value> >::value >
+        tt::enable_if_t< std::is_integral<tt::decay_t<Value> >::value >
         AssignImpl( Detail::precedence_device<9>, Value&& val){
                 DoAssign( Tag_Integer{}, std::forward<Value>(val) );
         }
         template<class Value>
-        std::enable_if_t< std::is_same<typename std::decay_t<Value>::IAmAnEmptyArray, int>::value >
+        tt::enable_if_t< std::is_same<typename tt::decay_t<Value>::IAmAnEmptyArray, int>::value >
         AssignImpl( Detail::precedence_device<13>, Value&& val){
                 DoAssign( Tag_Array{} );
         }
         template<class Value>
-        std::enable_if_t< std::is_same<typename std::decay_t<Value>::IAmAnEmptyMap, int>::value >
+        tt::enable_if_t< std::is_same<typename tt::decay_t<Value>::IAmAnEmptyMap, int>::value >
         AssignImpl( Detail::precedence_device<14>, Value&& val){
                 DoAssign( Tag_Map{} );
         }
         template<class Value>
-        std::enable_if_t< std::is_same<std::decay_t<Value>, bool>::value >
+        tt::enable_if_t< std::is_same<tt::decay_t<Value>, bool>::value >
         AssignImpl( Detail::precedence_device<15>, Value&& val){
                 DoAssign( Tag_Bool{}, std::forward<Value>(val));
         }
         template<class Value>
-        std::enable_if_t< ! std::is_same<JsonObject, std::remove_cv_t<std::decay_t<Value> > >::value >
+        tt::enable_if_t< ! std::is_same<JsonObject, tt::remove_cv_t<tt::decay_t<Value> > >::value >
         Assign(Value&& val){
                 AssignImpl( Detail::precedence_device<15>{}, std::forward<Value>(val) );
         }
         template<class Value>
-        std::enable_if_t< std::is_same<JsonObject, std::remove_cv_t<std::decay_t<Value> > >::value >
+        tt::enable_if_t< std::is_same<JsonObject, tt::remove_cv_t<tt::decay_t<Value> > >::value >
         Assign(Value&& that)
         {
                 type_ = that.type_;
@@ -385,7 +398,7 @@ struct JsonObject{
                 sstr << msg << "(" << Type() << ", " << ToString();
                 throw std::domain_error(sstr.str());
         }
-        auto AsInteger()const{
+        std::int64_t AsInteger()const{
                 switch(type_){
                 case Type_Integer:
                         return as_int_;
@@ -404,7 +417,7 @@ struct JsonObject{
                         ThrowCastError_("not an integer");
                 }
         }
-        auto AsFloat()const{
+        double AsFloat()const{
                 switch(type_){
                 case Type_Float:
                         return as_float_;
@@ -425,7 +438,7 @@ struct JsonObject{
                 ThrowCastError_("not an float");
                 }
         }
-        auto AsBool()const{
+        bool AsBool()const{
                 switch(type_){
                 case Type_Bool:
                         return as_bool_;
@@ -435,7 +448,7 @@ struct JsonObject{
                         ThrowCastError_("not an bool");
                 }
         }
-        auto const& AsString()const{
+        std::string const& AsString()const{
                 if( type_ == Type_String )
                         return as_string_;
                 ThrowCastError_("not an string");
@@ -518,7 +531,7 @@ private:
 public:
 
         template<class Policy, class Key>
-        typename std::decay_t<Policy>::return_type
+        typename tt::decay_t<Policy>::return_type
         ExecuteLookup_(Detail::precedence_device<0>&&, Policy&& p, Key key)const{
                 if( type_ == Type_Map ){
                         JsonObject casted{key};
@@ -534,7 +547,7 @@ public:
                 }
         }
         template<class Policy, class Key>
-        std::enable_if_t< std::is_integral<std::decay_t<Key> >::value, typename std::decay_t<Policy>::return_type >
+        tt::enable_if_t< std::is_integral<tt::decay_t<Key> >::value, typename tt::decay_t<Policy>::return_type >
         ExecuteLookup_(Detail::precedence_device<1>&&, Policy&& p, Key key)const{
                 if( type_ ==  Type_Array ){
                         auto idx = static_cast<typename array_type::size_type>(key);
@@ -560,7 +573,7 @@ public:
                 }
         }
         template<class Policy, class Key>
-        std::enable_if_t< std::is_same<std::decay_t<Key>, bool >::value, typename std::decay_t<Policy>::return_type >
+        tt::enable_if_t< std::is_same<tt::decay_t<Key>, bool >::value, typename tt::decay_t<Policy>::return_type >
         ExecuteLookup_(Detail::precedence_device<2>&&, Policy&& p, Key key)const{
                 return ExecuteLookup_( Detail::precedence_device<0>{}, p, std::forward<Key>(key));
         }
