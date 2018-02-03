@@ -403,17 +403,12 @@ struct JsonObject{
                 switch(type_){
                 case Type_Integer:
                         return as_int_;
+                case Type_Float:
+                        return static_cast<std::int64_t>(as_float_);
                 case Type_String:
-                        {
-                                std::stringstream sstr;
-                                sstr << as_string_;
-                                std::int64_t result;
-                                sstr >> result;
-                                if( sstr.eof() && sstr ){
-                                        return result;
-                                }
-                                ThrowCastError_("bad cast");
-                        }
+                        return boost::lexical_cast<std::int64_t>(as_string_);
+                case Type_Bool:
+                        return static_cast<std::int64_t>( as_bool_ != 0 ? 1 : 0 );
                 default:
                         ThrowCastError_("not an integer");
                 }
