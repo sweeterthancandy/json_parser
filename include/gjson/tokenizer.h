@@ -2,6 +2,8 @@
 #define JSON_PARSER_TOKENIZER_H
 
 #include <sstream>
+#include <iostream>
+
 #include <boost/preprocessor.hpp>
 #include <boost/format.hpp>
 #include <boost/optional.hpp>
@@ -126,11 +128,18 @@ namespace gjson{
 
 
                 explicit basic_tokenizer(std::string const& str)
-                        : basic_tokenizer(str.begin(), str.end())
-                {}
-                basic_tokenizer(Iter first, Iter last){
-                        state_.first_ = first;
-                        state_.last_ = last;
+                        : mem_{str}, start_{mem_.begin()}, end_{mem_.end()}
+                {
+                        state_.first_ = start_;
+                        state_.last_ = end_;
+
+                        next();
+                }
+                basic_tokenizer(Iter first, Iter last)
+                        : start_{first}, end_{last}
+                {
+                        state_.first_ = start_;
+                        state_.last_ = end_;
 
                         next();
                 }
@@ -171,8 +180,50 @@ namespace gjson{
                 auto begin(){ return token_begin(); }
                 auto end(){ return token_end(); }
 
+                std::string get_error()const{
+                        return error_;
+                }
 
+                boost::optional<token> return_errror_(std::string const& msg){
+
+
+                        enum{ before = 40, after = 40 };
+
+                        Iter ctx_start{start_};
+                        if( before < std::distance(ctx_start, state_.first_) ){
+                                ctx_start = state_.first_ - before;
+                        }
+
+                        Iter ctx_end = state_.first_ + after;
+                        if( end_ < ctx_end )
+                                ctx_end = end_;
+
+
+                        // now make a cursor
+                        //
+                        //  [a,2, @)
+                        //        ^
+                        
+                        auto d = std::distance(ctx_start, state_.first_);
+
+
+                        std::stringstream sstr;
+                        sstr << "error: " << msg << "\n";
+                        sstr << std::string(ctx_start, ctx_end) << "\n";
+                        if( d != 0){
+                                sstr << std::string(d, ' ');
+                        }
+                        sstr << "^"; // no newline
+
+                        error_ = sstr.str();
+
+                        std::cerr << get_error() << "\n";
+
+                        throw std::domain_error(get_error());
+                        // XXX want to use this
+                }
         private:
+
                 boost::optional<token> next_(){
 
                         // eat whitespace
@@ -195,7 +246,7 @@ namespace gjson{
                                         ++iter;
                                         for(;*iter != '"';++iter){
                                                 if( iter == state_.last_)
-                                                        TOKENIZER_ERROR("unterminated string");
+                                                        return return_errror_("unterminated string");
                                         }
                                         assert( *iter == '"');
                                         token tmp(token_type::string_,
@@ -210,7 +261,7 @@ namespace gjson{
                                         ++iter;
                                         for(;*iter != '\'';++iter){
                                                 if( iter == state_.last_)
-                                                        TOKENIZER_ERROR("unterminated string");
+                                                        return return_errror_("unterminated string");
                                         }
                                         assert( *iter == '\'');
                                         token tmp(token_type::string_,
@@ -224,6 +275,21 @@ namespace gjson{
                                         break;
                         }
 
+                        if( *state_.first_ == '.' ){
+                                auto iter = state_.first_;
+                                ++iter;
+                                if( iter == state_.last_  || ! std::isdigit( *iter ) )
+                                        return return_errror_(". not followed by digit");
+                                for(; iter != state_.last_ && std::isdigit(*iter);++iter);
+                                auto tmp = token(
+                                        token_type::float_, 
+                                        std::string(
+                                                state_.first_,
+                                                iter));
+                                state_.first_ = iter;
+                                return std::move(tmp);
+
+                        } else 
                         // is it an int or float literals?
                         if( std::isdigit(*state_.first_) || *state_.first_ == '+' || *state_.first_ == '-'){
                                 auto iter = state_.first_;
@@ -234,7 +300,7 @@ namespace gjson{
                                         case '-':
                                                 // must be followed by digit
                                                 if( iter == state_.last_  || ! std::isdigit( *iter ) )
-                                                        TOKENIZER_ERROR("+/- not followed by digit");
+                                                        return return_errror_("+/- not followed by digit");
                                                 break;
                                         default:
                                                 break;
@@ -244,7 +310,7 @@ namespace gjson{
                                 if( *iter == '.'){
                                         ++iter;
                                         if( ! std::isdigit(*iter) ){
-                                                TOKENIZER_ERROR("not a valid numeric literal");
+                                                return return_errror_("not a valid numeric literal");
                                         }
                                         for(; iter != state_.last_ && std::isdigit(*iter);++iter);
                                         auto tmp = token(
@@ -280,22 +346,15 @@ namespace gjson{
                                 }
                                 return token(token_type::string_, std::move(s));
                         } else{
-                                std::stringstream sstr;
-                                sstr << "unregognized sequence of chars (";
-                                sstr << std::string(state_.first_,
-                                        std::next(state_.first_,
-                                                std::min<size_t>/**/(
-                                                        20,
-                                                        std::distance(state_.first_,state_.last_)
-                                                )
-                                        ));
-                                sstr << ")";
-                                std::string msg = sstr.str();
-                                BOOST_THROW_EXCEPTION(std::domain_error(msg));
+                                return return_errror_("unregognized sequence of chars");
                         }
                 }
         private:
+                // TODO: reject construction from a string regerence
+                std::string mem_;
+                Iter start_, end_;
                 state_t state_;
+                std::string error_;
         };
 
         using tokenizer = basic_tokenizer<std::string::const_iterator>;

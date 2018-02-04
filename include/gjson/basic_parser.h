@@ -8,30 +8,15 @@
 
 namespace gjson {
 
-        #define PARSER_ON_ERROR( MSG )                                                  \
-                do {                                                                    \
-                        if( false ){                                                    \
-                        std::cerr << boost::format( "%s, peak=%s, at=%s)" ) % ( MSG ) % \
-                                 boost::get_optional_value_or( tok_.peak(),             \
-                                                               not_a_token_ ) %         \
-                                 tok_.whats_left();                                     \
-                        }                                                               \
-                        BOOST_THROW_EXCEPTION( std::domain_error(                       \
-                            str( boost::format( "%s, peak=%s, at=%s)" ) % ( MSG ) %     \
-                                 boost::get_optional_value_or( tok_.peak(),             \
-                                                               not_a_token_ ) %         \
-                                 tok_.whats_left() ) ) );                               \
-                } while ( 0 )
-
         template <class Maker, class Iter>
         struct basic_parser {
 
 
+
                 basic_parser( Maker& maker, Iter first, Iter last  )
-                    : first_( first ), last_( last ),
-                      tok_( first_, last_ ),
-                      not_a_token_( token_type::dummy, "(dummy)" ) ,
-                      maker_(maker)
+                      : tok_( first, last )
+                      , not_a_token_( token_type::dummy, "(dummy)" )
+                      , maker_(maker)
                 {}
 
                 void debug_(){
@@ -46,9 +31,9 @@ namespace gjson {
                 void parse(){
                         bool ret = obj_();
                         if( ! ret )
-                               PARSER_ON_ERROR("expected a map");
+                               tok_.return_errror_("expected a map");
                         if( ! eos())
-                               PARSER_ON_ERROR("unable to parse all the input");
+                               tok_.return_errror_("unable to parse all the input");
                 }
                 auto eos()const{return tok_.eos();}
         private:
@@ -62,7 +47,7 @@ namespace gjson {
                                         maker_.end_map();
                                         return true;
                                 }
-                                PARSER_ON_ERROR("expected a '}'");
+                                tok_.return_errror_("expected a '}'");
                         }
                         return false;
                 }
@@ -76,7 +61,7 @@ namespace gjson {
                                         maker_.end_array();
                                         return true;
                                 }
-                                PARSER_ON_ERROR("expected a '}'");
+                                tok_.return_errror_("expected a ']'");
                         }
                         return false;
                 }
@@ -106,7 +91,7 @@ namespace gjson {
                                 for(;;){
                                         if( eat_( token_type::comma) ){
                                                if( ! f() ){
-                                                        PARSER_ON_ERROR("expected a pair");
+                                                        tok_.return_errror_("expected a pair");
                                                }
                                         } else {
                                                 break;
@@ -161,13 +146,11 @@ namespace gjson {
                         return false;
                 }
 
-                Iter first_, last_;
                 basic_tokenizer<Iter> tok_;
                 token not_a_token_;
                 Maker& maker_;
         };
 
-        #undef PARSER_ON_ERROR
 
 } // json_parser_tokenizer
 #endif // JSON_PARSER_BASIC_PARSER_H
