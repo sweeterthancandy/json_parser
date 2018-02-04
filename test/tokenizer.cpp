@@ -60,8 +60,6 @@ TEST(tokenizer, eos){
         EXPECT_FALSE(tokenizer("and").eos());
 }
 TEST(tokenizer, bad){
-        tokenizer tok(R"({ [ 1, "hello", @ ] } )");
-        for(auto t : tok){}
 }
 
 TEST(tokenizer, badtoken){
@@ -99,18 +97,31 @@ TEST(tokenizer, token){
 }
 
 TEST(tokenizer, floats){
-        tokenizer tok(R"( [ 0.123, -0.12555, .0, 12324534.57684699]  )");
-        for(auto t : tok){
-                std::cout << t << "\n";
+        std::vector<std::string> literals = {
+                "0.123",
+                "+0.123",
+                "-0.123",
+                ".123",
+                "0.",
+                "+0.123",
+                "1e+1",
+                "1e-1",
+                "+1e+1",
+                "-1e-1",
+                "+121e-121",
+                "1e-7"
+        };
+        for( auto lit : literals ){
+                tokenizer tok(lit);
+                auto iter=tok.token_begin(), end=tok.token_end();
+                EXPECT_NE( iter, end);
+                EXPECT_EQ(token_type::float_,  iter->type());
+                EXPECT_EQ(lit,  iter->value());
+                ++iter;
+                EXPECT_EQ( iter, end);
         }
 }
-TEST(tokenizer, sci_floats){
-        tokenizer tok(R"( [  1e+1,  1e-1, +1e+1, -1e-1, +121e-121, 1e-7 ])");
 
-        for(auto t : tok){
-                std::cout << t << "\n";
-        }
-}
 
 
 

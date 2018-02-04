@@ -217,7 +217,7 @@ namespace gjson{
 
                         error_ = sstr.str();
 
-                        std::cerr << get_error() << "\n";
+                        //std::cerr << get_error() << "\n";
 
                         throw std::domain_error(get_error());
                         // XXX want to use this
@@ -356,20 +356,9 @@ namespace gjson{
 
                                 if( iter != state_.last_ && *iter == '.'){
                                         ++iter;
-                                        if( ! std::isdigit(*iter) ){
-                                                return return_errror_("not a valid numeric literal");
-                                        }
+                                        // we can have 0. etc
                                         for(; iter != state_.last_ && std::isdigit(*iter);++iter);
                                         type = token_type::float_;
-                                        #if 0
-                                        auto tmp = token(
-                                                token_type::float_, 
-                                                std::string(
-                                                        state_.first_,
-                                                        iter));
-                                        state_.first_ = iter;
-                                        return std::move(tmp);
-                                        #endif
                                 }
                                
                                 auto tmp = token(
