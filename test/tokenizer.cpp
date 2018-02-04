@@ -64,6 +64,12 @@ TEST(tokenizer, bad){
         for(auto t : tok){}
 }
 
+TEST(tokenizer, badtoken){
+        EXPECT_ANY_THROW( [](){
+        tokenizer tok(R"( 34a )");
+        for(auto t : tok){} }());
+}
+
 TEST(tokenizer, integers){
         tokenizer tok(R"( [ 0, 23, -4545, 8393939393]  )");
         for(auto t : tok){}
@@ -86,6 +92,11 @@ TEST(tokenizer, sci_float){
         ++iter;
         EXPECT_EQ( iter, end);
 }
+TEST(tokenizer, token){
+        EXPECT_NO_THROW( [](){
+        tokenizer tok(R"(hello)");
+        for(auto t : tok){} }());
+}
 
 TEST(tokenizer, floats){
         tokenizer tok(R"( [ 0.123, -0.12555, .0, 12324534.57684699]  )");
@@ -94,10 +105,7 @@ TEST(tokenizer, floats){
         }
 }
 TEST(tokenizer, sci_floats){
-        tokenizer tok(R"( [  1e+1,  1e-1,
-                            +1e+1, -1e-1,
-                            +121e-121, 1e-7
-                           ])");
+        tokenizer tok(R"( [  1e+1,  1e-1, +1e+1, -1e-1, +121e-121, 1e-7 ])");
 
         for(auto t : tok){
                 std::cout << t << "\n";

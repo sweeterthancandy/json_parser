@@ -224,6 +224,9 @@ namespace gjson{
                 }
         private:
 
+                /*
+                        I'm not using regular expressions on purpose
+                 */
                 boost::optional<token> next_(){
 
                         // eat whitespace
@@ -307,12 +310,58 @@ namespace gjson{
                                 }
 
                                 for(; iter != state_.last_ && std::isdigit(*iter);++iter);
-                                if( *iter == '.'){
+                                token_type type = token_type::int_;
+
+                                /*
+                                        [+-]?\d+[eE][+-]\d+
+                                 */
+                                bool sci = false;
+                                if( iter != state_.last_ && 
+                                    ( *iter == 'e' || *iter == 'E') )
+                                {
+                                        sci = true;
+                                        ++iter;
+                                        if( iter == state_.last_ )
+                                                return return_errror_("expected +/-");
+
+                                        switch(*iter){
+                                        case '+': case '-':
+                                                  break;
+                                        default:
+                                                return return_errror_("expected +/-");
+                                        }
+                                        ++iter;
+                                        if( iter == state_.last_ )
+                                                return return_errror_("expected expoonent");
+                                        
+                                        for(; iter != state_.last_ && std::isdigit(*iter);++iter);
+                                
+                                        // most not precede a [a-z]
+                                        if( iter != state_.last_ ){
+                                                if( std::isalpha( *iter ) ){
+                                                        return return_errror_("invalid token");
+                                                }
+                                        }
+                                        auto tmp = token(
+                                                token_type::float_,
+                                                std::string(
+                                                        state_.first_,
+                                                        iter));
+                                        state_.first_ = iter;
+                                        return std::move(tmp);
+
+
+                                }
+
+
+                                if( iter != state_.last_ && *iter == '.'){
                                         ++iter;
                                         if( ! std::isdigit(*iter) ){
                                                 return return_errror_("not a valid numeric literal");
                                         }
                                         for(; iter != state_.last_ && std::isdigit(*iter);++iter);
+                                        type = token_type::float_;
+                                        #if 0
                                         auto tmp = token(
                                                 token_type::float_, 
                                                 std::string(
@@ -320,18 +369,26 @@ namespace gjson{
                                                         iter));
                                         state_.first_ = iter;
                                         return std::move(tmp);
-                                } else{
-                                        auto tmp = token(
-                                                token_type::int_, 
-                                                std::string(
-                                                        state_.first_,
-                                                        iter));
-                                        state_.first_ = iter;
-                                        return std::move(tmp);
+                                        #endif
                                 }
+                               
+                                auto tmp = token(
+                                        type,
+                                        std::string(
+                                                state_.first_,
+                                                iter));
+                                state_.first_ = iter;
+
+                                // most not precede a [a-z]
+                                if( iter != state_.last_ ){
+                                        if( std::isalpha( *iter ) ){
+                                                return return_errror_("invalid token");
+                                        }
+                                }
+                                return std::move(tmp);
                         }  else if( std::isalpha(*state_.first_) || *state_.first_ == '_' ){
                                 auto iter = state_.first_;
-                                for(;std::isalnum(*iter) || *iter == '_';++iter){
+                                for(; (iter != state_.last_) && ( std::isalnum(*iter) || *iter == '_' );++iter){
                                         if( iter == state_.last_){
                                                 break;
                                         }
