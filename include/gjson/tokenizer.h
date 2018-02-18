@@ -217,7 +217,7 @@ namespace gjson{
 
                         error_ = sstr.str();
 
-                        //std::cerr << get_error() << "\n";
+                        std::cerr << get_error() << "\n";
 
                         throw std::domain_error(get_error());
                         // XXX want to use this
@@ -278,6 +278,7 @@ namespace gjson{
                                         break;
                         }
 
+                        #if 0
                         if( *state_.first_ == '.' ){
                                 auto iter = state_.first_;
                                 ++iter;
@@ -293,8 +294,14 @@ namespace gjson{
                                 return std::move(tmp);
 
                         } else 
+                        #endif
                         // is it an int or float literals?
-                        if( std::isdigit(*state_.first_) || *state_.first_ == '+' || *state_.first_ == '-'){
+                        if( std::isdigit(*state_.first_) || *state_.first_ == '+' || *state_.first_ == '-' || *state_.first_ == '.'){
+
+                                
+                                bool real = false;
+                                bool leading_dot = false;
+
                                 auto iter = state_.first_;
                                 ++iter;
 
@@ -302,18 +309,41 @@ namespace gjson{
                                         case '+':
                                         case '-':
                                                 // must be followed by digit
+                                                if( iter == state_.last_  )
+                                                        return return_errror_("+/- not followed by digit");
+                                                if( *iter == '.' ){
+                                                        real = true;
+                                                        leading_dot = true;
+                                                        ++iter;
+                                                }
                                                 if( iter == state_.last_  || ! std::isdigit( *iter ) )
                                                         return return_errror_("+/- not followed by digit");
+                                                break;
+                                        case '.':
+                                                real = true;
+                                                leading_dot = true;
+                                                // must be followed by digit
+                                                if( iter == state_.last_  || ! std::isdigit( *iter ) )
+                                                        return return_errror_(". not followed by digit");
                                                 break;
                                         default:
                                                 break;
                                 }
 
                                 for(; iter != state_.last_ && std::isdigit(*iter);++iter);
-                                token_type type = token_type::int_;
 
+                                if( ! leading_dot ){
+                                        // at the 12.34 etc
+                                        //          ^
+                                        if( iter != state_.last_ && *iter == '.'){
+                                                ++iter;
+                                                // we can have 0. etc
+                                                for(; iter != state_.last_ && std::isdigit(*iter);++iter);
+                                                real = true;
+                                        }
+                                }
                                 /*
-                                        [+-]?\d+[eE][+-]\d+
+                                        [+-]?\d+\(.\d\*\)?[eE][+-]\d+\(.\d|+\)
                                  */
                                 bool sci = false;
                                 if( iter != state_.last_ && 
@@ -326,15 +356,23 @@ namespace gjson{
 
                                         switch(*iter){
                                         case '+': case '-':
+                                                ++iter;
                                                   break;
                                         default:
-                                                return return_errror_("expected +/-");
+                                        // implicit '+'
+                                                  break;
                                         }
-                                        ++iter;
+
                                         if( iter == state_.last_ )
                                                 return return_errror_("expected expoonent");
                                         
                                         for(; iter != state_.last_ && std::isdigit(*iter);++iter);
+                                        if( iter != state_.last_ && *iter == '.'){
+                                                ++iter;
+                                                // we can have 0. etc
+                                                for(; iter != state_.last_ && std::isdigit(*iter);++iter);
+                                                real = true;
+                                        }
                                 
                                         // most not precede a [a-z]
                                         if( iter != state_.last_ ){
@@ -354,15 +392,9 @@ namespace gjson{
                                 }
 
 
-                                if( iter != state_.last_ && *iter == '.'){
-                                        ++iter;
-                                        // we can have 0. etc
-                                        for(; iter != state_.last_ && std::isdigit(*iter);++iter);
-                                        type = token_type::float_;
-                                }
                                
                                 auto tmp = token(
-                                        type,
+                                        ( real ? token_type::float_ : token_type::int_ ),
                                         std::string(
                                                 state_.first_,
                                                 iter));

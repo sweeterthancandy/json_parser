@@ -109,16 +109,40 @@ TEST(tokenizer, floats){
                 "+1e+1",
                 "-1e-1",
                 "+121e-121",
-                "1e-7"
+                "1e-7",
+
+                "12e34",
+                "+12e34",
+                "-12e34",
+                
+                "1.2e34",
+                "+1.2e34",
+                "-1.2e34",
+                
+                "12e3.4",
+                "+12e3.4",
+                "-12e3.4",
+                
+                "1.2e3.4",
+                "+1.2e3.4",
+                "-1.2e3.4",
+                
+                ".12e3.4",
+                "+.12e3.4",
+                "-.12e3.4",
+                
+                ".12e.34",
+                "+.12e.34",
+                "-.12e.34"
         };
         for( auto lit : literals ){
                 tokenizer tok(lit);
                 auto iter=tok.token_begin(), end=tok.token_end();
-                EXPECT_NE( iter, end);
-                EXPECT_EQ(token_type::float_,  iter->type());
-                EXPECT_EQ(lit,  iter->value());
+                EXPECT_NE( iter, end) << lit;
+                EXPECT_EQ(token_type::float_,  iter->type()) << lit;
+                EXPECT_EQ(lit,  iter->value()) << lit;
                 ++iter;
-                EXPECT_EQ( iter, end);
+                EXPECT_EQ( iter, end) << lit;
         }
 }
 
