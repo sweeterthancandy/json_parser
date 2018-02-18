@@ -278,23 +278,6 @@ namespace gjson{
                                         break;
                         }
 
-                        #if 0
-                        if( *state_.first_ == '.' ){
-                                auto iter = state_.first_;
-                                ++iter;
-                                if( iter == state_.last_  || ! std::isdigit( *iter ) )
-                                        return return_errror_(". not followed by digit");
-                                for(; iter != state_.last_ && std::isdigit(*iter);++iter);
-                                auto tmp = token(
-                                        token_type::float_, 
-                                        std::string(
-                                                state_.first_,
-                                                iter));
-                                state_.first_ = iter;
-                                return std::move(tmp);
-
-                        } else 
-                        #endif
                         // is it an int or float literals?
                         if( std::isdigit(*state_.first_) || *state_.first_ == '+' || *state_.first_ == '-' || *state_.first_ == '.'){
 
